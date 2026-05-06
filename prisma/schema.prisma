@@ -1,0 +1,361 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  Int                  @id @default(autoincrement())
+  firstname           String
+  lastname            String
+  email               String               @unique
+  password            String?
+  provider            String               @default("local")
+  providerId          String?
+  profilePicture      String?
+  age                 Int
+  gender              String
+  phoneNumber         String               @unique
+  isVerified          Boolean              @default(false)
+  verificationToken   String?
+  passwordResetToken  String?
+  passwordResetExpires DateTime?
+  accountExpiresAt    DateTime?
+  tokenVersion        Int                  @default(0)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  userRoles           UserRole[]
+  hostedClubs         Club[]               @relation("ClubHost")
+  hostedTournaments   Tournament[]         @relation("TournamentHost")
+  registrations       PlayerRegistration[]
+  teamPlayers         TeamPlayer[]
+
+  @@map("users")
+}
+
+model Role {
+  id        Int        @id @default(autoincrement())
+  name      String     @unique
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  userRoles UserRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  roleId    Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@map("userroles")
+}
+
+model Club {
+  id          Int          @id @default(autoincrement())
+  name        String
+  location    String
+  phoneNumber String
+  clubType    String
+  description String?
+  hostId      Int
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  host        User         @relation("ClubHost", fields: [hostId], references: [id], onDelete: Cascade)
+  tournaments Tournament[]
+
+  @@map("clubs")
+}
+
+model Tournament {
+  id                    Int                  @id @default(autoincrement())
+  name                  String
+  description           String
+  entryFee              Decimal              @default(0) @db.Decimal(10, 2)
+  discount              Int                  @default(0)
+  tournamentTumbnail    String?
+  location              String
+  startDate             DateTime             @db.Date
+  endDate               DateTime             @db.Date
+  registrationOpenDate  DateTime             @db.Date
+  registrationCloseDate DateTime             @db.Date
+  status                String
+  organizerInfo         String
+  slug                  String               @unique
+  clubId                Int
+  hostId                Int
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  club                  Club                 @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  host                  User                 @relation("TournamentHost", fields: [hostId], references: [id], onDelete: Cascade)
+  brackets              Bracket[]
+  teams                 Team[]
+  registrations         PlayerRegistration[]
+  pools                 Pool[]
+
+  @@map("tournaments")
+}
+
+model Event {
+  id        Int       @id @default(autoincrement())
+  eventName String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  brackets  Bracket[]
+
+  @@map("events")
+}
+
+model Format {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("formats")
+}
+
+model Group {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("groups")
+}
+
+model BracketFormat {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  brackets    Bracket[]
+
+  @@map("bracketformats")
+}
+
+model ScoringList {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  brackets  Bracket[]
+
+  @@map("scoringlists")
+}
+
+model PlayoffSeeding {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  brackets    Bracket[]
+
+  @@map("playoffseedings")
+}
+
+model Bracket {
+  id              Int                  @id @default(autoincrement())
+  name            String
+  maxTeams        Int
+  minAge          Int?                 @default(0)
+  maxAge          Int?                 @default(0)
+  minRating       Int                  @default(0)
+  maxRating       Int                  @default(0)
+  bracketFormatId Int
+  scoringListId   Int
+  playoffSeedingId Int
+  playoffMatchId  Int?
+  semiFinalMatchId Int?
+  bronzeMatchId   Int?
+  goldMatchId     Int?
+  roundId         Int?
+  tournamentId    Int
+  eventId         Int
+  poolStarted     Boolean              @default(false)
+  status          String               @default("draft")
+  startDate       DateTime             @db.Date
+  endDate         DateTime             @db.Date
+  registrationFee Decimal              @default(0) @db.Decimal(10, 2)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  tournament      Tournament           @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  event           Event                @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  bracketFormat   BracketFormat        @relation(fields: [bracketFormatId], references: [id], onDelete: Cascade)
+  scoringList     ScoringList          @relation(fields: [scoringListId], references: [id], onDelete: Cascade)
+  playoffSeeding  PlayoffSeeding       @relation(fields: [playoffSeedingId], references: [id], onDelete: Cascade)
+  teams           Team[]
+  pools           Pool[]
+  registrations   PlayerRegistration[]
+  rounds          Round[]
+
+  @@map("brackets")
+}
+
+model Team {
+  id            Int            @id @default(autoincrement())
+  teamName      String?
+  bracketId     Int
+  tournamentId  Int
+  status        String         @default("registered")
+  paymentStatus String?        @default("paid")
+  isComplete    Boolean
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  bracket       Bracket        @relation(fields: [bracketId], references: [id], onDelete: Cascade)
+  tournament    Tournament     @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  players       TeamPlayer[]
+  poolTeams     PoolTeam[]
+  stats         PoolTeamStats[]
+  matchesAsTeam1 Match[]       @relation("MatchTeam1")
+  matchesAsTeam2 Match[]       @relation("MatchTeam2")
+
+  @@map("teams")
+}
+
+model TeamPlayer {
+  id        Int      @id @default(autoincrement())
+  playerId  Int
+  teamId    Int
+  role      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  player    User     @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, teamId])
+  @@map("teamplayers")
+}
+
+model PlayerRegistration {
+  id            Int       @id @default(autoincrement())
+  playerId      Int
+  tournamentId  Int
+  bracketId     Int
+  status        String    @default("registered")
+  paymentStatus String    @default("paid")
+  checkInStatus String    @default("not_checked_in")
+  checkInTime   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  player        User      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  tournament    Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  bracket       Bracket   @relation(fields: [bracketId], references: [id], onDelete: Cascade)
+
+  @@map("playerregistrations")
+}
+
+model PlayerBracket {
+  id           Int      @id @default(autoincrement())
+  playerId     Int
+  tournamentId Int
+  bracketId    Int
+  status       String   @default("registered")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("playerbrackets")
+}
+
+model Pool {
+  id           Int             @id @default(autoincrement())
+  poolName     String
+  bracketId    Int
+  tournamentId Int
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  bracket      Bracket         @relation(fields: [bracketId], references: [id], onDelete: Cascade)
+  tournament   Tournament      @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  poolTeams    PoolTeam[]
+  matches      Match[]
+  rounds       Round[]
+  stats        PoolTeamStats[]
+
+  @@map("Pool")
+}
+
+model PoolTeam {
+  poolId      Int
+  teamId      Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  pool        Pool     @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([poolId, teamId])
+  @@map("PoolTeam")
+}
+
+model Round {
+  id          Int       @id @default(autoincrement())
+  poolId      Int?
+  roundNumber Int
+  status      String    @default("pending")
+  bracketId   Int?
+  type        String    @default("pool")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  bracket     Bracket?  @relation(fields: [bracketId], references: [id], onDelete: SetNull)
+  pool        Pool?     @relation(fields: [poolId], references: [id], onDelete: SetNull)
+  matches     Match[]
+
+  @@map("rounds")
+}
+
+model Match {
+  id           Int      @id @default(autoincrement())
+  team1Id      Int
+  team2Id      Int
+  poolId       Int?
+  roundId      Int
+  status       String   @default("not_started")
+  scoreTeam1   Int?     @default(0)
+  scoreTeam2   Int?     @default(0)
+  type         String?  @default("pool")
+  winnerTeamId Int?
+  loserTeamId  Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  pool         Pool?    @relation(fields: [poolId], references: [id], onDelete: SetNull)
+  round        Round    @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  team1        Team     @relation("MatchTeam1", fields: [team1Id], references: [id], onDelete: Restrict)
+  team2        Team     @relation("MatchTeam2", fields: [team2Id], references: [id], onDelete: Restrict)
+
+  @@map("Matches")
+}
+
+model PoolTeamStats {
+  id                     Int      @id @default(autoincrement())
+  poolId                 Int
+  teamId                 Int
+  wins                   Int?     @default(0)
+  losses                 Int?     @default(0)
+  pointsFor              Int?     @default(0)
+  pointsAgainst          Int?     @default(0)
+  pointDifference        Int?     @default(0)
+  pdPercent              Float?   @default(0)
+  playoffSeed            Int?
+  playoffWins            Int?     @default(0)
+  playoffPointsFor       Int?     @default(0)
+  playoffPointsAgainst   Int?     @default(0)
+  playoffPointDifference Int?     @default(0)
+  finalRank              Int?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  team                   Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  pool                   Pool     @relation(fields: [poolId], references: [id], onDelete: Cascade)
+
+  @@unique([poolId, teamId])
+  @@index([poolId, wins, pointDifference])
+  @@map("poolteamstats")
+}
