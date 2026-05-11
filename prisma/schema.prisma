@@ -359,3 +359,29 @@ model PoolTeamStats {
   @@index([poolId, wins, pointDifference])
   @@map("poolteamstats")
 }
+model Player {
+  
+  id          Int      @id @default(autoincrement())
+  frontendId  String?   @unique
+  initials    String?
+  avatar      String?
+  name        String
+  email       String   @unique
+  gender      String?
+  age         Int?
+  date        DateTime? @db.Date
+  phone       String?
+  partner     String?
+  partnerId   String?
+  division    String?
+  dupr        Decimal? @db.Decimal(4, 2)
+  paid        String?
+  paidClass   String?
+  status      String?
+  statusClass String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  isValid Int @default(1)
+
+  @@map("players")
+}

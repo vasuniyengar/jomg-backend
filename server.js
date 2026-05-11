@@ -35,6 +35,8 @@ import verifyRoutes from "./src/routes/verifyRoutes.js";
 
 import playerRegistrationRoutes from "./src/routes/playerRegistrationRoutes.js";
 
+import savePlayers from "./src/routes/savePlayers.js";
+
 const app = express();
 
 const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
@@ -114,6 +116,8 @@ app.use("/api/events", eventRoutes);
 app.use("/api/players", playerRegistrationRoutes);
 
 app.use("/api/host", hostRoutes);
+
+app.use("/api/players", savePlayers);
 
 app.use(errorHandler);
 
