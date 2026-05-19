@@ -291,6 +291,14 @@ model PoolTeam {
   updatedAt   DateTime @updatedAt
   pool        Pool     @relation(fields: [poolId], references: [id], onDelete: Cascade)
   team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  seed           Int?                        
+  matchesPlayed  Int      @default(0)        
+  matchesWon     Int      @default(0)        
+  matchesLost    Int      @default(0)      
+  gamesWon       Int      @default(0)        
+  gamesLost      Int      @default(0)        
+  pointsFor      Int      @default(0)        
+  pointsAgainst  Int      @default(0)        
 
   @@id([poolId, teamId])
   @@map("PoolTeam")
@@ -330,6 +338,16 @@ model Match {
   round        Round    @relation(fields: [roundId], references: [id], onDelete: Cascade)
   team1        Team     @relation("MatchTeam1", fields: [team1Id], references: [id], onDelete: Restrict)
   team2        Team     @relation("MatchTeam2", fields: [team2Id], references: [id], onDelete: Restrict)
+  courtNumber  Int?                          
+  scheduledAt  DateTime?                     
+  startedAt    DateTime?                     
+  completedAt  DateTime?                     
+  adminNote    String?                      
+  dreamBreakerRequired    Boolean  @default(false)  
+  dreamBreakerTeam1Score  Int?               
+  dreamBreakerTeam2Score  Int?              
+  dreamBreakerWinnerId    Int? 
+  games        MlpMatchGame[]              
 
   @@map("Matches")
 }
@@ -384,4 +402,27 @@ model Player {
   isValid Int @default(1)
 
   @@map("players")
+}
+model MlpMatchGame {
+  id               Int      @id @default(autoincrement())
+  matchId          Int
+  gameNumber       Int      // 1, 2, 3, 4
+  gameType         String   // womens_doubles, mens_doubles, mixed_doubles_a, mixed_doubles_b
+  team1Player1Id   Int
+  team1Player2Id   Int
+  team2Player1Id   Int
+  team2Player2Id   Int
+  team1Score       Int      @default(0)
+  team2Score       Int      @default(0)
+  status           String   @default("pending") // pending, in_progress, completed
+  startedAt        DateTime?
+  completedAt      DateTime?
+  winnerTeamId     Int?
+  winnerSide       String?  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  match            Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, gameNumber])
+  @@map("mlpmatchgames")
 }

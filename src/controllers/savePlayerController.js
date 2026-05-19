@@ -38,17 +38,6 @@ const importPlayers = async (req, res) => {
 
     for (const player of players) {
       try {
-
-        //   if(!player.email.toLowerCase().includes("@")||!player.email.toLowerCase().includes(".com")){
-        //     results.failed.push({name: player.name, reason: "invalid email"})
-        // }
-        // // const existing = await Player.findOne({ where: { email: player.email } });
-        // const existing = await prisma.player.findUnique({ where: { email: player.email } });
-
-        // if (existing) {
-        //   results.skipped.push({ name: player.email, reason: "Email already exists" });
-        //   continue;
-        // }
         const isValid =(!player.email || !player.email.toLowerCase().includes("@") || !player.email.toLowerCase().includes(".com"))? 0 : 1;
         const newPlayer = await prisma.player.upsert({
           where: { frontendId: player.id },
@@ -68,6 +57,7 @@ const importPlayers = async (req, res) => {
               paidClass:   player.paidClass   || null,
               status:      player.status      || null,
               statusClass: player.statusClass || null,
+              email:       player.email,
               isValid,
   },
           create: {

@@ -37,7 +37,12 @@ import playerRegistrationRoutes from "./src/routes/playerRegistrationRoutes.js";
 
 import savePlayers from "./src/routes/savePlayers.js";
 
+import mlpRoutes from "./src/routes/mlp/rounds.js";
+import unpaidEmailRoute from "./src/routes/unpaidEmailRoute.js";
+import dailyEmailJob from "./src/utils/unpaidEmail.js";
 const app = express();
+
+
 
 const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
   .split(",")
@@ -52,6 +57,7 @@ if (frontendUrl && !allowedOrigins.includes(frontendUrl)) {
 const isDev = process.env.NODE_ENV !== "production";
 const isLocalOrigin = (origin) =>
   /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+
 
 app.use(helmet());
 app.use(
@@ -119,6 +125,10 @@ app.use("/api/host", hostRoutes);
 
 app.use("/api/players", savePlayers);
 
+app.use("/api/mlp", mlpRoutes);
+
+app.use("/api/email", unpaidEmailRoute)
+
 app.use(errorHandler);
 
 let httpServer;
@@ -128,9 +138,13 @@ const startServer = async () => {
     await prisma.$queryRaw`SELECT 1`;
 
     console.log("database connected");
+
     httpServer = app.listen(port, "0.0.0.0", () => {
       console.log(`Server is running on port ${port}`);
+
+     dailyEmailJob();
     });
+
   } catch (error) {
     console.error("Startup failure", error);
     process.exit(1);
