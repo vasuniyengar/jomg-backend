@@ -99,6 +99,10 @@ const Bracket = sequelize.define(
       allowNull: false,
       defaultValue: 0.0,
     },
+    scoringConfig: {
+      type: DataTypes.JSONB,
+      allowNull: true,
+    },
   },
   {
     tableName: "brackets",

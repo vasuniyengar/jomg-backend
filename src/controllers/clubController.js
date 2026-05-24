@@ -1,6 +1,5 @@
 import Club from "../models/Club.js";
-import User from "../models/User.js";
-import { Op } from "sequelize";
+import prisma from "../config/prisma.js";
 
 const createClub = async (req, res) => {
   try {
@@ -28,22 +27,25 @@ const createClub = async (req, res) => {
   }
 };
 
-// Get all clubs (can be filtered later by host/player)
+// Get all clubs for the authenticated host (Prisma — same client as seed/sign-in)
 const getAllClubs = async (req, res) => {
   try {
     const hostId = req.user.id;
     const { search } = req.query;
-    // console.log(search);
-    const where = {};
-    where.hostId = hostId;
-    if (search) where.name = { [Op.like]: `%${search}%` };
-    const clubs = await Club.findAll({
-      where,
-      // include: {
-      //   model: User,
-      //   as: "host",
-      //   attributes: ["id", "firstname", "lastname", "email"],
-      // },
+
+    const clubs = await prisma.club.findMany({
+      where: {
+        hostId,
+        ...(search?.trim()
+          ? {
+              name: {
+                contains: search.trim(),
+                mode: "insensitive",
+              },
+            }
+          : {}),
+      },
+      orderBy: { name: "asc" },
     });
 
     res.status(200).json({ error: false, code: 200, data: clubs });

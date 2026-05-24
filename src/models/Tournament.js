@@ -2,8 +2,6 @@ import sequelize from "../config/database.js";
 
 import { DataTypes } from "sequelize";
 
-// const S3_BASE_URL = `https://s3.${process.env.AWS_REGION}.amazonaws.com/${process.env.AWS_BUCKET_NAME}`;
-
 const Tournament = sequelize.define(
   "Tournament",
   {
@@ -60,9 +58,17 @@ const Tournament = sequelize.define(
         this.setDataValue("tournamentTumbnail", keyToStore);
       },
     },
+    venue: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
     location: {
       type: DataTypes.STRING,
       allowNull: false,
+    },
+    timezone: {
+      type: DataTypes.STRING,
+      allowNull: true,
     },
     startDate: {
       type: DataTypes.DATEONLY,
@@ -80,6 +86,26 @@ const Tournament = sequelize.define(
       type: DataTypes.DATEONLY,
       allowNull: false,
     },
+    refundDeadline: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+    },
+    refundFee: {
+      type: DataTypes.DECIMAL(10, 2),
+      defaultValue: 0,
+    },
+    duprRecorded: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
+    },
+    duprEnforced: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+    requireSkillRating: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
     status: {
       type: DataTypes.ENUM("draft", "active", "ongoing", "completed"),
       allowNull: false,
@@ -92,6 +118,14 @@ const Tournament = sequelize.define(
       type: DataTypes.STRING,
       allowNull: false,
       unique: true,
+    },
+    clubId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+    },
+    hostId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
     },
   },
   {

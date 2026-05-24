@@ -15,6 +15,8 @@ const ORGANIZER_ROLES = ["organizer", "super_admin", "host"];
 
 router.put("/checkin", hostController.checkInPlayerForEvent);
 
+router.put("/uncheckin", hostController.undoCheckInPlayer);
+
 router.post(
   "/tournaments/:tournamentId/brackets/:bracketId/add-player",
   middlewares.authenticate,
@@ -140,6 +142,13 @@ router.put(
   middlewares.authenticate,
   middlewares.authorizeRole(ORGANIZER_ROLES),
   hostController.resetMatchScore
+);
+
+router.get(
+  "/tournaments/:tournamentId/brackets/:bracketId/playoffs",
+  middlewares.authenticate,
+  middlewares.authorizeRole(ORGANIZER_ROLES),
+  hostController.getPlayoffRounds
 );
 
 router.post(

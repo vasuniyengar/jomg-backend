@@ -217,14 +217,7 @@ const registeredPlayersForTournament = async (req, res) => {
           include: [{ model: Event, attributes: ["id", "eventName"] }],
         },
       ],
-      order: [
-        [
-          sequelize.literal(
-            "FIELD(`PlayerRegistration`.`checkInStatus`, 'not_checked_in', 'checked_in')"
-          ),
-          "ASC",
-        ],
-      ],
+      order: [["checkInStatus", "ASC"]],
     });
 
     if (!registrations.length) {
@@ -263,7 +256,9 @@ const registeredPlayersForTournament = async (req, res) => {
         eventName: reg.Bracket.Event?.eventName || null,
         status: reg.status,
         paymentStatus: reg.paymentStatus,
+        paymentEmailSentCount: reg.paymentEmailSentCount ?? 0,
         checkInStatus: reg.checkInStatus,
+        checkInTime: reg.checkInTime || null,
       });
     });
 
