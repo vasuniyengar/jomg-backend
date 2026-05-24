@@ -3,8 +3,8 @@ import bcrypt from "bcrypt";
 import crypto from "crypto";
 import { Op } from "sequelize";
 import sequelize from "../config/database.js";
-import sqsClient from "../config/sqsClient.js";
-import { SendMessageCommand } from "@aws-sdk/client-sqs";
+import { enqueueEmail } from "../utils/enqueueEmail.js";
+import { resolveScoringListIdForRound } from "../utils/scoringRules.js";
 
 const {
   PlayerRegistration,
@@ -192,12 +192,7 @@ const addPlayerByHost = async (req, res) => {
         endDate: tournament.endDate,
       };
 
-      await sqsClient.send(
-        new SendMessageCommand({
-          QueueUrl: process.env.EMAIL_QUEUE_URL,
-          MessageBody: JSON.stringify(addedJob),
-        })
-      );
+      await enqueueEmail(addedJob);
     } else {
       if (/\bmen\b/.test(eventName) && gender !== "male") {
         await t.rollback();
@@ -275,12 +270,7 @@ const addPlayerByHost = async (req, res) => {
         verificationUrl: verificationUrl,
       };
 
-      await sqsClient.send(
-        new SendMessageCommand({
-          QueueUrl: process.env.EMAIL_QUEUE_URL,
-          MessageBody: JSON.stringify(combinedJob),
-        })
-      );
+      await enqueueEmail(combinedJob);
     }
 
     await t.commit();
@@ -402,7 +392,7 @@ const checkInPlayerForEvent = async (req, res) => {
       include: [
         {
           model: Bracket,
-          include: [{ model: Event, where: { id: eventId } }],
+          include: [{ model: Event }],
         },
       ],
     });
@@ -441,6 +431,54 @@ const checkInPlayerForEvent = async (req, res) => {
         bracketId,
         checkInStatus: registration.checkInStatus,
         checkInTime: registration.checkInTime,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: true,
+      code: 500,
+      message: error.message,
+    });
+  }
+};
+
+const undoCheckInPlayer = async (req, res) => {
+  try {
+    const { tournamentId, bracketId, playerId } = req.body;
+
+    if (!tournamentId || !bracketId || !playerId) {
+      return res.status(400).json({
+        error: true,
+        code: 400,
+        message: "tournamentId, bracketId, and playerId are required",
+      });
+    }
+
+    const registration = await PlayerRegistration.findOne({
+      where: { tournamentId, bracketId, playerId },
+    });
+
+    if (!registration) {
+      return res.status(404).json({
+        error: true,
+        code: 404,
+        message: "Registration not found",
+      });
+    }
+
+    registration.checkInStatus = "not_checked_in";
+    registration.checkInTime = null;
+    await registration.save();
+
+    res.status(200).json({
+      error: false,
+      code: 200,
+      message: "Check-in undone",
+      data: {
+        playerId,
+        tournamentId,
+        bracketId,
+        checkInStatus: registration.checkInStatus,
       },
     });
   } catch (error) {
@@ -939,21 +977,20 @@ const checkInAllPlayersForEvent = async (req, res) => {
     const { tournamentId, bracketId } = req.params;
     const { eventId, playerIds } = req.body;
 
-    if (!tournamentId || !bracketId || !eventId || !playerIds?.length) {
+    if (!tournamentId || !bracketId || !playerIds?.length) {
       return res.status(400).json({
         error: true,
         code: 400,
-        message: "tournamentId, bracketId, eventId and playerIds are required",
+        message: "tournamentId, bracketId, and playerIds are required",
       });
     }
 
-    // Fetch registrations for these players and event
     const registrations = await PlayerRegistration.findAll({
       where: { tournamentId, bracketId, playerId: playerIds },
       include: [
         {
           model: Bracket,
-          include: [{ model: Event, where: { id: eventId } }],
+          include: [{ model: Event }],
         },
       ],
     });
@@ -1491,16 +1528,16 @@ const getPoolDetails = async (req, res) => {
       });
     }
 
-    // Kept as requested by you
-    const scoring = await ScoringList.findByPk(bracket.roundId);
-
-    if (!scoring) {
-      return res.status(404).json({
-        error: true,
-        code: 404,
-        message: "scoring doesnt found!",
-      });
-    }
+    const poolScoringId =
+      bracket.scoringListId || bracket.roundId;
+    const scoring = poolScoringId
+      ? await ScoringList.findByPk(poolScoringId)
+      : null;
+    const scoringLabel =
+      scoring?.name ||
+      (typeof bracket.scoringConfig === "object" &&
+        bracket.scoringConfig?.pool?.label) ||
+      "Pool play";
 
     const pool = await Pool.findOne({
       where: { bracketId, tournamentId, id: poolId },
@@ -1608,7 +1645,7 @@ const getPoolDetails = async (req, res) => {
     const result = {
       id: pool.id,
       poolName: pool.poolName,
-      scoring: scoring.name,
+      scoring: scoringLabel,
       teams: pool.PoolTeams.map((pt) => ({
         id: pt.Team.id,
         teamName: pt.Team.teamName,
@@ -2044,6 +2081,71 @@ const resetMatchScore = async (req, res) => {
     await t.rollback();
     // console.error("resetMatchScore error:", error);
     res.status(500).json({ message: error.message });
+  }
+};
+
+/** Read-only playoff bracket (does not create rounds). */
+const getPlayoffRounds = async (req, res) => {
+  try {
+    const { tournamentId, bracketId } = req.params;
+    const bracket = await Bracket.findByPk(bracketId);
+    if (!bracket) {
+      return res.status(404).json({ message: "Bracket not found" });
+    }
+
+    const rounds = await Round.findAll({
+      where: { bracketId, type: { [Op.not]: "pool" } },
+      include: [
+        {
+          model: Match,
+          include: [
+            {
+              model: Team,
+              as: "Team1",
+              include: [
+                {
+                  model: TeamPlayer,
+                  as: "TeamPlayers",
+                  include: [
+                    {
+                      model: User,
+                      as: "User",
+                      attributes: ["firstname", "lastname"],
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              model: Team,
+              as: "Team2",
+              include: [
+                {
+                  model: TeamPlayer,
+                  as: "TeamPlayers",
+                  include: [
+                    {
+                      model: User,
+                      as: "User",
+                      attributes: ["firstname", "lastname"],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      order: [["roundNumber", "ASC"]],
+    });
+
+    const frontendData = await mapRoundsToFrontend(rounds);
+    return res.status(200).json({
+      message: rounds.length ? "Playoffs fetched" : "No playoff rounds yet",
+      data: frontendData,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
   }
 };
 
@@ -2483,45 +2585,10 @@ const updateMatchScore = async (req, res) => {
     const bracket = await Bracket.findByPk(bracketId, { transaction: t });
     if (!bracket) throw new Error("Bracket not found");
 
-    // ensuring correct scoring id according to rounds
-    let scoringListId = null;
-
-    if (match.poolId) {
-      // It's a POOL match.
-      scoringListId = bracket.scoringListId;
-    } else {
-      //for playoff rounds matches
-      const roundType = round.type.toLowerCase();
-
-      switch (roundType) {
-        case "gold":
-        case "final":
-        case "round_of_2":
-          scoringListId = bracket.goldMatchId;
-          break;
-        case "bronze":
-          scoringListId = bracket.bronzeMatchId;
-          break;
-        case "semifinal":
-        case "semifinals":
-        case "round_of_4":
-          scoringListId = bracket.semiFinalMatchId;
-          break;
-        case "quarterfinal":
-        case "quarterfinals":
-        case "round_of_8":
-        case "round_of_16":
-        case "round_of_32":
-        case "round_of_64":
-          scoringListId = bracket.playoffMatchId;
-          break;
-        default:
-          // console.warn(
-          //   `Unknown round type "${roundType}", defaulting to playoff scoring.`
-          // );
-          scoringListId = bracket.playoffMatchId;
-      }
-    }
+    const scoringListId = resolveScoringListIdForRound(
+      bracket,
+      match.poolId ? "pool" : round.type
+    );
 
     // Now, fetch the scoring rule using the ID we just found
     const scoring = scoringListId
@@ -3002,6 +3069,7 @@ const getFinalStandings = async (req, res) => {
 
 export default {
   checkInPlayerForEvent,
+  undoCheckInPlayer,
   gettingAllBracketsOfTournamentByHost,
   registeredPlayersForBracket,
   registeredPlayersWhoAreNotCheckin,
@@ -3016,6 +3084,7 @@ export default {
   getMatchDetails,
   updateMatchScore,
   resetMatchScore,
+  getPlayoffRounds,
   getOrCreatePlayoffs,
   resetPlayoffs,
   getFinalStandings,

@@ -6,6 +6,8 @@ import tournamentControllers from "../controllers/tournamentController.js";
 
 import bracketController from "../controllers/bracketController.js";
 
+import divisionController from "../controllers/divisionController.js";
+
 import upload from "../middlewares/upload.js";
 
 import tournamentValidations from "../validations/tournamentSchema.js";
@@ -54,6 +56,13 @@ router.get(
   tournamentControllers.getAllTournamentsOfHost
 );
 
+router.get(
+  "/bracket-meta",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  divisionController.getBracketMeta
+);
+
 router.get("/active", tournamentControllers.getAllTournamentsOfStatusActive);
 
 router.get("/", tournamentControllers.getAllTournaments);
@@ -95,6 +104,48 @@ router.post(
 );
 
 router.get(
+  "/:tournamentId/divisions",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  divisionController.listDivisions
+);
+
+router.post(
+  "/:tournamentId/divisions",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  divisionController.createDivision
+);
+
+router.put(
+  "/:tournamentId/divisions/:bracketId",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  divisionController.updateDivision
+);
+
+router.delete(
+  "/:tournamentId/divisions/:bracketId",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  divisionController.deleteDivision
+);
+
+router.post(
+  "/:tournamentId/players/bulk-upload",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  divisionController.bulkUploadPlayers
+);
+
+router.post(
+  "/:tournamentId/players/resend-payment-emails",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  divisionController.resendPaymentEmails
+);
+
+router.get(
   "/:tournamentId/brackets",
   middleware.authenticate,
   middleware.authorizeRole(ORGANIZER_ROLES),
@@ -106,12 +157,5 @@ router.get(
 //   middleware.authenticate,
 //   teamPlayerController.createTeamPlayer
 // );
-
-router.put(
-  "/update/:tournamentId",
-  middleware.authenticate,
-  middleware.authorizeRole(ORGANIZER_ROLES),
-  tournamentControllers.updatingTournamentById
-);
 
 export default router;

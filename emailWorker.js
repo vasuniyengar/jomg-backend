@@ -2,6 +2,8 @@ import { Consumer } from "sqs-consumer";
 import Mailgen from "mailgen";
 import dotenv from "dotenv";
 import sendEmail from "./src/utils/sendEmail.js";
+import sequelize from "./src/config/database.js";
+import { processPaymentRegistrationJob } from "./src/utils/paymentRegistrationWorker.js";
 import { SQSClient, DeleteMessageCommand } from "@aws-sdk/client-sqs";
 
 dotenv.config();
@@ -36,7 +38,25 @@ const handleMailJob = async (message) => {
 
   console.log(`[Worker] Job type: ${job.jobType}`);
 
+  const deleteMessage = async () => {
+    await sqsClient.send(
+      new DeleteMessageCommand({
+        QueueUrl: process.env.EMAIL_QUEUE_URL,
+        ReceiptHandle: message.ReceiptHandle,
+      })
+    );
+    console.log(
+      `[Worker] Message ${message.MessageId} deleted successfully from SQS`
+    );
+  };
+
   try {
+    if (job.jobType === "paymentRegistration") {
+      await processPaymentRegistrationJob(job);
+      await deleteMessage();
+      return;
+    }
+
     const mailGenerator = new Mailgen({
       theme: "default",
       product: {
@@ -187,17 +207,7 @@ const handleMailJob = async (message) => {
 
     console.log(`[Worker] Email sent to ${job.email}`);
 
-    //  use SAME SQS client for deletion (previously might fail silently)
-    await sqsClient.send(
-      new DeleteMessageCommand({
-        QueueUrl: process.env.EMAIL_QUEUE_URL,
-        ReceiptHandle: message.ReceiptHandle,
-      })
-    );
-
-    console.log(
-      `[Worker] Message ${message.MessageId} deleted successfully from SQS`
-    );
+    await deleteMessage();
   } catch (error) {
     console.error(`[Worker] FAILED to send email:`, error);
 
@@ -253,8 +263,20 @@ app.on("stopped", () => {
   console.log("[Worker] Stopped.");
 });
 
-console.log("[Worker] Starting SQS Email Worker...");
-app.start();
+const startWorker = async () => {
+  try {
+    await sequelize.authenticate();
+    console.log("[Worker] Database connected");
+  } catch (err) {
+    console.error("[Worker] Database connection failed:", err);
+    process.exit(1);
+  }
+
+  console.log("[Worker] Starting SQS Email Worker...");
+  app.start();
+};
+
+startWorker();
 
 const stopWorker = () => {
   console.log("[Worker] Stopping on shutdown signal...");

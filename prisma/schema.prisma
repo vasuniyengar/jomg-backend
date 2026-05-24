@@ -90,6 +90,13 @@ model Tournament {
   status                String
   organizerInfo         String
   slug                  String               @unique
+  venue                 String?
+  timezone              String?
+  refundDeadline        DateTime?            @db.Date
+  refundFee             Decimal              @default(0) @db.Decimal(10, 2)
+  duprRecorded          Boolean              @default(true)
+  duprEnforced          Boolean              @default(false)
+  requireSkillRating    Boolean              @default(false)
   clubId                Int
   hostId                Int
   createdAt             DateTime             @default(now())
@@ -146,6 +153,7 @@ model BracketFormat {
 model ScoringList {
   id        Int       @id @default(autoincrement())
   name      String    @unique
+  rules     Json?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   brackets  Bracket[]
@@ -187,6 +195,7 @@ model Bracket {
   startDate       DateTime             @db.Date
   endDate         DateTime             @db.Date
   registrationFee Decimal              @default(0) @db.Decimal(10, 2)
+  scoringConfig   Json?
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
   tournament      Tournament           @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
@@ -243,9 +252,10 @@ model PlayerRegistration {
   tournamentId  Int
   bracketId     Int
   status        String    @default("registered")
-  paymentStatus String    @default("paid")
-  checkInStatus String    @default("not_checked_in")
-  checkInTime   DateTime?
+  paymentStatus          String    @default("paid")
+  paymentEmailSentCount  Int       @default(0)
+  checkInStatus          String    @default("not_checked_in")
+  checkInTime            DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   player        User      @relation(fields: [playerId], references: [id], onDelete: Cascade)

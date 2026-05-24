@@ -6,6 +6,13 @@ import { Op } from "sequelize";
 
 import sequelize from "../config/database.js";
 
+import {
+  computeHubStatus,
+  hubStatusSortOrder,
+  serializeOrganizerInfo,
+  parseOrganizerInfo,
+} from "../utils/tournamentHub.js";
+
 // import s3Client from "../config/s3Client.js";
 
 // import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
@@ -43,53 +50,96 @@ const extractS3KeyFromUrl = (fullUrl) => {
   return fullUrl;
 };
 
+const startOfToday = () => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const resolveSlug = (name, customSlug) => {
+  if (customSlug && String(customSlug).trim()) {
+    return slugify(String(customSlug).trim(), {
+      lower: true,
+      locale: "en",
+      strict: true,
+    });
+  }
+  return slugify(name, { lower: true, locale: "en", strict: true });
+};
+
+const enrichBracketRegistrationStats = async (bracket) => {
+  const eventName = bracket.Event?.eventName?.toLowerCase() || "";
+  let playersPerTeam = 1;
+  if (eventName.includes("double")) playersPerTeam = 2;
+  if (eventName.includes("mixed")) playersPerTeam = 2;
+
+  const totalPlayersRegistered = await PlayerRegistration.count({
+    where: { bracketId: bracket.id },
+  });
+  const totalCapacityOfPlayers = bracket.maxTeams * playersPerTeam;
+
+  bracket.dataValues.totalPlayersRegistered = totalPlayersRegistered;
+  bracket.dataValues.totalCapacityOfPlayers = totalCapacityOfPlayers;
+  return totalPlayersRegistered;
+};
+
+const mapTournamentListItem = async (tournament) => {
+  let players = 0;
+  for (const bracket of tournament.Brackets || []) {
+    players += await enrichBracketRegistrationStats(bracket);
+  }
+
+  const paidCount = await PlayerRegistration.count({
+    where: {
+      tournamentId: tournament.id,
+      paymentStatus: "paid",
+    },
+  });
+
+  const entryFee = Number(tournament.entryFee || 0);
+  const revenue = Math.round(paidCount * entryFee);
+
+  const json = tournament.toJSON();
+  const hubStatus = computeHubStatus(json);
+
+  return {
+    ...json,
+    hubStatus,
+    players,
+    revenue,
+    divisions: (tournament.Brackets || []).length,
+    banner: json.tournamentTumbnail || null,
+    organizer: parseOrganizerInfo(json.organizerInfo),
+  };
+};
+
 const createTournament = async (req, res) => {
   const t = await sequelize.transaction();
   let s3FileKey = null;
   try {
-    // console.log("file", req.file);
-    // console.log("req body", req.body);
     const {
       clubId,
       name,
       description,
-      entryFee,
-      discount,
+      entryFee = 0,
+      discount = 0,
+      venue,
       location,
-      status,
+      timezone,
+      status = "draft",
       startDate,
       endDate,
       registrationOpenDate,
       registrationCloseDate,
+      refundDeadline,
+      refundFee = 0,
+      duprRecorded = true,
+      duprEnforced = false,
+      requireSkillRating = false,
       organizerInfo,
-      // bracketName,
-      // groupId,
-      // formatId,
-      // bracketFormatId,
-      // maxTeams,
-      // scoringListId,
-      // playoffMatchId,
-      // goldMatchId,
-      // bronzeMatchId,
-      // semiFinalMatchId,
-      // playoffSeedingId,
-      // roundMatchId,
+      slug: slugInput,
     } = req.body;
 
-    // console.log(status);
-
-    // if (req.file) {
-    //   s3FileKey = `${Date.now()}-${req.file.originalname.replace(/\s+g/, "_")}`;
-    //   const command = new PutObjectCommand({
-    //     Bucket: process.env.AWS_BUCKET_NAME,
-    //     Key: s3FileKey,
-    //     Body: req.file.buffer,
-    //     ContentType: req.file.mimetype,
-    //   });
-    //   await s3Client.send(command);
-    // }
-
-    //Check if club exists
     const club = await Club.findOne({
       where: { id: clubId, hostId: req.user.id },
       transaction: t,
@@ -104,167 +154,68 @@ const createTournament = async (req, res) => {
       });
     }
 
-    const slug = slugify(name, { lower: true, locale: "en", strict: true });
+    const slug = resolveSlug(name, slugInput);
 
-    // Check if tournament exists
-    let tournament = await Tournament.findOne({
-      where: {
-        hostId: req.user.id,
-        clubId,
-        slug,
-      },
+    const existing = await Tournament.findOne({
+      where: { slug },
       transaction: t,
     });
 
-    if (tournament) {
+    if (existing) {
       await t.rollback();
       return res.status(400).json({
         error: true,
         code: 400,
-        message: "tournament name should be unique",
+        message: "Tournament URL slug is already in use",
       });
     }
 
-    // Fetch required references
-    // const group = await Group.findByPk(groupId, { transaction: t });
-
-    // const format = await Format.findByPk(formatId, { transaction: t });
-
-    // const bracketFormat = await BracketFormat.findByPk(bracketFormatId, {
-    //   transaction: t,
-    // });
-    // const scoringList = await ScoringList.findByPk(scoringListId, {
-    //   transaction: t,
-    // });
-    // const playoffSeedings = await PlayoffSeeding.findByPk(playoffSeedingId, {
-    //   transaction: t,
-    // });
-
-    // if (
-    //   !group ||
-    //   !format ||
-    //   !bracketFormat ||
-    //   !scoringList ||
-    //   !playoffSeedings
-    // ) {
-    //   await t.rollback();
-    //   return res.status(404).json({
-    //     code: 404,
-    //     error: true,
-    //     message:
-    //       "group, format, bracketFormat, scoringList, or playoffSeeding not found",
-    //   });
-    // }
-
-    // // Determine event
-    // const eventName = `${group.name} ${format.name}`;
-    // let event = await Event.findOne({ where: { eventName }, transaction: t });
-    // if (!event) {
-    //   event = await Event.create({ eventName }, { transaction: t });
-    // }
-
-    // Check if bracket already exists under this tournament & event
-    // if (tournament) {
-    //   const existingBracket = await Bracket.findOne({
-    //     where: {
-    //       name: bracketName,
-    //       tournamentId: tournament.id,
-    //       eventId: event.id,
-    //       bracketFormatId,
-    //       bronzeMatchId,
-    //       goldMatchId,
-    //       scoringListId,
-    //       semiFinalMatchId,
-    //       playoffSeedingId,
-    //       roundId: roundMatchId,
-    //       maxTeams: maxTeams ?? 0,
-    //       formatId,
-    //       groupId,
-    //       playoffMatchId,
-    //       minAge: 0,
-    //       maxAge: 0,
-    //       minRating: 0,
-    //       maxRating: 0,
-    //     },
-    //     transaction: t,
-    //   });
-
-    //   if (existingBracket) {
-    //     await t.rollback();
-    //     return res.status(400).json({
-    //       code: 400,
-    //       error: true,
-    //       message:
-    //         "Tournament with this bracket already exists! Try another name.",
-    //     });
-    //   }
-    // }
-
-    // If tournament does not exist, create it
-    if (!tournament) {
-      const slug = slugify(name, { lower: true, locale: "en", strict: true });
-      tournament = await Tournament.create(
-        {
-          clubId,
-          name,
-          description,
-          entryFee,
-          discount,
-          location,
-          startDate,
-          endDate,
-          registrationOpenDate,
-          registrationCloseDate,
-          tournamentTumbnail: s3FileKey,
-          status,
-          slug,
-          organizerInfo,
-          hostId: req.user.id,
-        },
-        { transaction: t }
-      );
-    }
-
-    // // Create new bracket
-    // const newBracket = await Bracket.create(
-    //   {
-    //     tournamentId: tournament.id,
-    //     name: bracketName,
-    //     maxTeams,
-    //     eventId: event.id,
-    //     bracketFormatId,
-    //     scoringListId,
-    //     playoffSeedingId,
-    //     playoffMatchId,
-    //     semiFinalMatchId,
-    //     bronzeMatchId,
-    //     goldMatchId,
-    //     roundId: roundMatchId,
-    //   },
-    //   { transaction: t }
-    // );
+    const tournament = await Tournament.create(
+      {
+        clubId,
+        name,
+        description,
+        entryFee,
+        discount,
+        venue: venue || null,
+        location,
+        timezone: timezone || null,
+        startDate,
+        endDate,
+        registrationOpenDate,
+        registrationCloseDate,
+        refundDeadline: refundDeadline || null,
+        refundFee,
+        duprRecorded,
+        duprEnforced,
+        requireSkillRating,
+        tournamentTumbnail: s3FileKey,
+        status,
+        slug,
+        organizerInfo: serializeOrganizerInfo(organizerInfo),
+        hostId: req.user.id,
+      },
+      { transaction: t }
+    );
 
     await t.commit();
 
-    return res.status(200).json({
-      code: 200,
-      message: "Tournament  created",
-      data: {
-        tournamentId: tournament.id,
-        message: "your tournament is created successfully",
-        // bracketData: newBracket,
-        // eventData: event,
-      },
+    const plain = tournament.toJSON();
+    plain.organizer = parseOrganizerInfo(plain.organizerInfo);
+    plain.hubStatus = computeHubStatus(plain);
+    plain.players = 0;
+    plain.revenue = 0;
+    plain.divisions = 0;
+    plain.banner = plain.tournamentTumbnail || null;
+
+    return res.status(201).json({
+      code: 201,
+      error: false,
+      message: "Tournament created",
+      data: plain,
     });
   } catch (error) {
     console.log(error.message);
-    // if (s3FileKey) {
-    //   const deleteCommand = new DeleteObjectCommand({
-    //     Bucket: process.env.AWS_BUCKET_NAME,
-    //     Key: s3FileKey,
-    //   });
-    //   await s3Client.send(deleteCommand);
-    // }
     await t.rollback();
     return res.status(500).json({
       code: 500,
@@ -278,48 +229,65 @@ const createTournament = async (req, res) => {
 const getAllTournamentsOfHost = async (req, res) => {
   try {
     const hostId = req.user.id;
-    const { status, search } = req.query;
+    const { status: hubStatusFilter, search } = req.query;
 
     const where = { hostId };
-    if (status) where.status = status;
-    if (search) where.name = { [Op.like]: `%${search}%` };
+    const today = startOfToday();
+    const todayStr = today.toISOString().slice(0, 10);
+
+    if (hubStatusFilter === "draft") {
+      where.status = "draft";
+    } else if (hubStatusFilter === "completed") {
+      where.status = "completed";
+    } else if (hubStatusFilter === "active") {
+      where[Op.or] = [
+        { status: "ongoing" },
+        {
+          status: "active",
+          startDate: { [Op.lte]: todayStr },
+        },
+      ];
+    } else if (hubStatusFilter === "upcoming") {
+      where.status = "active";
+      where.startDate = { [Op.gt]: todayStr };
+    }
+
+    if (search) {
+      where[Op.and] = [
+        ...(where[Op.and] || []),
+        {
+          [Op.or]: [
+            { name: { [Op.iLike]: `%${search}%` } },
+            { location: { [Op.iLike]: `%${search}%` } },
+            { venue: { [Op.iLike]: `%${search}%` } },
+          ],
+        },
+      ];
+    }
 
     const tournaments = await Tournament.findAll({
       where,
       include: [
-        {
-          model: Bracket,
-          include: [{ model: Event }],
-        },
+        { model: Club, attributes: ["id", "name", "location", "phoneNumber"] },
+        { model: Bracket, include: [{ model: Event }] },
       ],
       order: [["createdAt", "DESC"]],
     });
 
-    // Loop over tournaments and brackets to calculate registration info
-    for (const tournament of tournaments) {
-      for (const bracket of tournament.Brackets) {
-        const eventName = bracket.Event?.eventName?.toLowerCase() || "";
+    let finalData = await Promise.all(
+      tournaments.map((row) => mapTournamentListItem(row))
+    );
 
-        // Determine players per team
-        let playersPerTeam = 1;
-        if (eventName.includes("double")) playersPerTeam = 2;
-        if (eventName.includes("mixed")) playersPerTeam = 2;
-
-        // Count registered players
-        const totalPlayersRegistered = await PlayerRegistration.count({
-          where: { bracketId: bracket.id },
-        });
-
-        // Calculate total capacity
-        const totalCapacityOfPlayers = bracket.maxTeams * playersPerTeam;
-
-        // Attach new fields to bracket object
-        bracket.dataValues.totalPlayersRegistered = totalPlayersRegistered;
-        bracket.dataValues.totalCapacityOfPlayers = totalCapacityOfPlayers;
-      }
+    if (
+      hubStatusFilter &&
+      ["active", "upcoming", "draft", "completed"].includes(hubStatusFilter)
+    ) {
+      finalData = finalData.filter((row) => row.hubStatus === hubStatusFilter);
     }
 
-    const finalData = tournaments.map((t) => t.toJSON());
+    finalData.sort(
+      (a, b) => hubStatusSortOrder(a.hubStatus) - hubStatusSortOrder(b.hubStatus)
+    );
 
     res.status(200).json({
       code: 200,
@@ -707,6 +675,12 @@ const updatingTournamentById = async (req, res) => {
         tournamentTumbnail: newS3KeyToStore,
       }),
     };
+
+    if (updatePayload.organizerInfo !== undefined) {
+      updatePayload.organizerInfo = serializeOrganizerInfo(
+        updatePayload.organizerInfo
+      );
+    }
 
     if (updatePayload.name && updatePayload.name !== tournament.name) {
       updatePayload.slug = slugify(updatePayload.name, {
