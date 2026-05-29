@@ -20,6 +20,7 @@ import {
   computeRegistrationAmountDue,
   getPaymentPhone,
 } from "../utils/paymentRegistrationEmail.js";
+import { linkBulkUploadPartners } from "../utils/linkRegistrationPartners.js";
 
 const {
   Tournament,
@@ -551,6 +552,7 @@ export const bulkUploadPlayers = async (req, res) => {
     const skipped = [];
     const errors = [];
     const emailQueue = [];
+    const batchRegs = [];
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -678,6 +680,15 @@ export const bulkUploadPlayers = async (req, res) => {
           registrationId: registration.id,
         });
 
+        batchRegs.push({
+          registrationId: registration.id,
+          playerId: player.id,
+          bracketId: bracket.id,
+          email,
+          name,
+          row,
+        });
+
         if (sendEmails) {
           emailQueue.push({
             registrationId: registration.id,
@@ -695,6 +706,8 @@ export const bulkUploadPlayers = async (req, res) => {
         errors.push({ row: rowNum, reason: rowErr.message });
       }
     }
+
+    await linkBulkUploadPartners(batchRegs, tournamentId, t);
 
     await t.commit();
 

@@ -21,6 +21,10 @@ const PlayerRegistration = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: false,
     },
+    partnerId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
     status: {
       type: DataTypes.ENUM(
         "all",

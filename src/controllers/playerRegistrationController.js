@@ -216,6 +216,12 @@ const registeredPlayersForTournament = async (req, res) => {
           model: Bracket,
           include: [{ model: Event, attributes: ["id", "eventName"] }],
         },
+        {
+          model: User,
+          as: "Partner",
+          required: false,
+          attributes: ["id", "firstname", "lastname"],
+        },
       ],
       order: [["checkInStatus", "ASC"]],
     });
@@ -228,6 +234,11 @@ const registeredPlayersForTournament = async (req, res) => {
         data: [],
       });
     }
+
+    const regByPlayerBracket = new Map();
+    registrations.forEach((reg) => {
+      regByPlayerBracket.set(`${reg.playerId}:${reg.bracketId}`, reg);
+    });
 
     // Group by player
     const playersMap = {};
@@ -247,7 +258,17 @@ const registeredPlayersForTournament = async (req, res) => {
         };
       }
 
-      // Add all events/brackets
+      const partnerId = reg.partnerId || null;
+      let partnerName = null;
+      let partnerCheckInStatus = null;
+      if (reg.Partner) {
+        partnerName = `${reg.Partner.firstname} ${reg.Partner.lastname}`.trim();
+      }
+      if (partnerId) {
+        const partnerReg = regByPlayerBracket.get(`${partnerId}:${reg.bracketId}`);
+        partnerCheckInStatus = partnerReg?.checkInStatus || null;
+      }
+
       playersMap[playerId].events.push({
         registrationId: reg.id,
         bracketId: reg.Bracket.id,
@@ -259,6 +280,9 @@ const registeredPlayersForTournament = async (req, res) => {
         paymentEmailSentCount: reg.paymentEmailSentCount ?? 0,
         checkInStatus: reg.checkInStatus,
         checkInTime: reg.checkInTime || null,
+        partnerId,
+        partnerName,
+        partnerCheckInStatus,
       });
     });
 

@@ -69,6 +69,15 @@ Bracket.belongsTo(Event, { foreignKey: "eventId" });
 User.hasMany(PlayerRegistration, { foreignKey: "playerId" });
 PlayerRegistration.belongsTo(User, { foreignKey: "playerId" });
 
+User.hasMany(PlayerRegistration, {
+  foreignKey: "partnerId",
+  as: "PartnerRegistrations",
+});
+PlayerRegistration.belongsTo(User, {
+  foreignKey: "partnerId",
+  as: "Partner",
+});
+
 Tournament.hasMany(PlayerRegistration, { foreignKey: "tournamentId" });
 PlayerRegistration.belongsTo(Tournament, { foreignKey: "tournamentId" });
 
