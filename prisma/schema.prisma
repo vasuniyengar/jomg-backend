@@ -31,6 +31,7 @@ model User {
   hostedClubs         Club[]               @relation("ClubHost")
   hostedTournaments   Tournament[]         @relation("TournamentHost")
   registrations       PlayerRegistration[]
+  partnerRegistrations PlayerRegistration[] @relation("RegistrationPartner")
   teamPlayers         TeamPlayer[]
 
   @@map("users")
@@ -249,6 +250,7 @@ model TeamPlayer {
 model PlayerRegistration {
   id            Int       @id @default(autoincrement())
   playerId      Int
+  partnerId     Int?
   tournamentId  Int
   bracketId     Int
   status        String    @default("registered")
@@ -259,6 +261,7 @@ model PlayerRegistration {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   player        User      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  partner       User?     @relation("RegistrationPartner", fields: [partnerId], references: [id], onDelete: SetNull)
   tournament    Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   bracket       Bracket   @relation(fields: [bracketId], references: [id], onDelete: Cascade)
 
