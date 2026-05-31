@@ -127,6 +127,9 @@ PoolTeamStats.belongsTo(Pool, { foreignKey: "poolId" });
 Team.hasOne(PoolTeamStats, { foreignKey: "teamId" });
 Pool.hasMany(PoolTeamStats, { foreignKey: "poolId" });
 
+User.belongsTo(Role, { foreignKey: "roleId", as: "role" });
+Role.hasMany(User, { foreignKey: "roleId", as: "users" });
+
 PoolTeam.hasOne(PoolTeamStats, {
   foreignKey: "teamId",
   sourceKey: "teamId",
@@ -159,4 +162,6 @@ export default {
   Match,
   Round,
   PoolTeamStats,
+  Team,
+  TeamPlayer,
 };

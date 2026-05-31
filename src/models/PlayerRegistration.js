@@ -32,11 +32,7 @@ const PlayerRegistration = sequelize.define(
       allowNull: false,
       defaultValue: "registered",
     },
-    paymentStatus: {
-      type: DataTypes.ENUM("paid", "unpaid", "refunded"),
-      allowNull: false,
-      defaultValue: "paid",
-    },
+   
     paymentEmailSentCount: {
       type: DataTypes.INTEGER,
       allowNull: false,
@@ -49,6 +45,23 @@ const PlayerRegistration = sequelize.define(
     },
     checkInTime: {
       type: DataTypes.DATE,
+      allowNull: true,
+    },
+    rosterNumber: {        
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    playerRole: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+   
+    clubName: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+     division: {
+      type: DataTypes.STRING,
       allowNull: true,
     },
   },
