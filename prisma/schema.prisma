@@ -18,7 +18,7 @@ model User {
   profilePicture      String?
   age                 Int
   gender              String
-  phoneNumber         String               @unique
+  phoneNumber         String               
   isVerified          Boolean              @default(false)
   verificationToken   String?
   passwordResetToken  String?
@@ -33,6 +33,13 @@ model User {
   registrations       PlayerRegistration[]
   partnerRegistrations PlayerRegistration[] @relation("RegistrationPartner")
   teamPlayers         TeamPlayer[]
+  duprId      String?
+  instagram   String?
+  facebook    String?
+  paymentMethod String?
+  paymentStatus String?
+  roleId              Int?
+  role    Role?    @relation(fields: [roleId], references: [id], onDelete: SetNull)
 
   @@map("users")
 }
@@ -43,6 +50,7 @@ model Role {
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   userRoles UserRole[]
+  users     User[]
 
   @@map("roles")
 }
@@ -208,6 +216,7 @@ model Bracket {
   pools           Pool[]
   registrations   PlayerRegistration[]
   rounds          Round[]
+  division  String?
 
   @@map("brackets")
 }
@@ -264,6 +273,10 @@ model PlayerRegistration {
   partner       User?     @relation("RegistrationPartner", fields: [partnerId], references: [id], onDelete: SetNull)
   tournament    Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   bracket       Bracket   @relation(fields: [bracketId], references: [id], onDelete: Cascade)
+  rosterNumber  String?
+  playerRole    String?
+  clubName      String?
+  division      String?
 
   @@map("playerregistrations")
 }

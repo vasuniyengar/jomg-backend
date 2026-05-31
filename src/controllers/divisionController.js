@@ -22,6 +22,21 @@ import {
 } from "../utils/paymentRegistrationEmail.js";
 import { linkBulkUploadPartners } from "../utils/linkRegistrationPartners.js";
 
+// const {
+//   Tournament,
+//   Bracket,
+//   Group,
+//   Format,
+//   BracketFormat,
+//   ScoringList,
+//   PlayoffSeeding,
+//   Event,
+//   PlayerRegistration,
+//   User,
+//   Role,
+//   UserRole,
+//   Pool,
+// } = models;
 const {
   Tournament,
   Bracket,
@@ -36,6 +51,8 @@ const {
   Role,
   UserRole,
   Pool,
+  Team,       
+  TeamPlayer, 
 } = models;
 
 const assertHostTournament = async (tournamentId, hostId) => {
@@ -612,15 +629,23 @@ export const bulkUploadPlayers = async (req, res) => {
               lastname,
               email,
               password,
-              age: Number(row.age || row.Age || 30) || 30,
+              age: Number(row.age || 30) || 30,
               gender,
-              phoneNumber: String(row.phone || row.Phone || "").trim() || null,
+              phoneNumber: String(row.phone || row.Phone || "").trim() || undefined,
               isVerified: false,
               accountExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
               verificationToken,
+              duprId: String(row.duprId || row.DuprID || "").trim() || null,  
+              instagram: String(row.instagram || "").trim() || null,            
+              facebook: String(row.facebook || "").trim() || null,             
+              paymentMethod: String(row.paymentMethod || "").trim() || null,  
+             paymentStatus: String(row.paymentStatus || "unpaid").trim(),    
+             roleId: 4
             },
             { transaction: t }
           );
+
+
           await UserRole.create(
             { userId: player.id, roleId: playerRole.id },
             { transaction: t }
@@ -629,8 +654,18 @@ export const bulkUploadPlayers = async (req, res) => {
           await UserRole.findOrCreate({
             where: { userId: player.id, roleId: playerRole.id },
             transaction: t,
-          });
-        }
+          }); 
+          const updates = {};
+          if (!player.duprId && row.duprId) updates.duprId = String(row.duprId).trim();
+          if (!player.instagram && row.instagram) updates.instagram = String(row.instagram).trim();
+          if (!player.facebook && row.facebook) updates.facebook = String(row.facebook).trim();
+          if (!player.paymentMethod && row.paymentMethod) updates.paymentMethod = String(row.paymentMethod).trim(); // ADD
+          if (row.paymentStatus) updates.paymentStatus = String(row.paymentStatus).trim();                          // ADD
+          if (Object.keys(updates).length) {
+  await player.update(updates, { transaction: t });
+}
+        } 
+        
 
         const existingReg = await PlayerRegistration.findOne({
           where: {
@@ -658,16 +693,60 @@ export const bulkUploadPlayers = async (req, res) => {
           continue;
         }
 
+        // const registration = await PlayerRegistration.create(
+        //   {
+        //     playerId: player.id,
+        //     tournamentId,
+        //     bracketId: bracket.id,
+        //     status: "registered",
+        //     paymentStatus: "unpaid",
+        //   },
+        //   { transaction: t }
+        // );
         const registration = await PlayerRegistration.create(
-          {
-            playerId: player.id,
-            tournamentId,
-            bracketId: bracket.id,
-            status: "registered",
-            paymentStatus: "unpaid",
-          },
-          { transaction: t }
-        );
+        {
+          playerId: player.id,
+          tournamentId,
+          bracketId: bracket.id,
+          status: "registered",
+          paymentStatus: "unpaid",
+          playerRole: String(row.role || "starter").trim().toLowerCase(),
+          division: String(row.division || "").trim() || null,                
+          rosterNumber: String(row.rosterNumber || row.roster_number || "").trim() || null, 
+          clubName: String(row.clubName || row.club_name || "").trim() || null, 
+        },
+        { transaction: t }
+      );
+        
+       const teamName = String(
+            row.teamName || row.team_name || ""
+          ).trim();
+          if (teamName) {
+            let team = await Team.findOne({
+              where: { tournamentId, bracketId: bracket.id, teamName },
+              transaction: t,
+            });
+            if (!team) {
+              team = await Team.create(
+                {
+                  teamName,
+                  bracketId: bracket.id,
+                  tournamentId,
+                  status: "registered",
+                  paymentStatus: "paid",
+                  isComplete: false,
+                },
+                { transaction: t }
+              );
+            }
+            await TeamPlayer.findOrCreate({
+              where: { playerId: player.id, teamId: team.id },
+              defaults: {
+                role: String(row.role || "starter").trim().toLowerCase(),
+              },
+              transaction: t,
+            });
+          }
 
         const fee = Number(bracket.registrationFee || tournament.entryFee || 0);
         const amountDue = computeAmountDue(fee, row, bracketMap, rows);
@@ -737,8 +816,13 @@ export const bulkUploadPlayers = async (req, res) => {
       message: `Bulk upload complete: ${created.length} registered`,
       data: { created, skipped, errors, emailsQueued },
     });
+
   } catch (error) {
-    await t.rollback();
+    try {
+      await t.rollback();
+    } catch {
+     
+    }
     res.status(error.status || 500).json({
       code: error.status || 500,
       error: true,
