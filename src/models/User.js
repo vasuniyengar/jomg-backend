@@ -89,6 +89,36 @@ const User = sequelize.define(
       allowNull: false,
       defaultValue: 0,
     },
+      duprId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+     instagram: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+      facebook: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    paymentMethod: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+      paymentStatus: {
+      type: DataTypes.ENUM("paid", "unpaid", "refunded"),
+      allowNull: false,
+      defaultValue: "paid",
+    },
+    roleId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: "roles",
+      key: "id",
+  },
+},
+
   },
   {
     tableName: "users",
