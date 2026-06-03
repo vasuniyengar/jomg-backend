@@ -43,6 +43,10 @@ const User = sequelize.define(
     //   type: DataTypes.TEXT, // or STRING if you prefer
     //   allowNull: true,
     // },
+    duprRating: {
+      type: DataTypes.DECIMAL(4, 2),
+      allowNull: true,
+    },
     age: {
       type: DataTypes.INTEGER,
       allowNull: false,

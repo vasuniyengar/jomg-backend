@@ -5,6 +5,14 @@ import { Op } from "sequelize";
 import sequelize from "../config/database.js";
 import { enqueueEmail } from "../utils/enqueueEmail.js";
 import { resolveScoringListIdForRound } from "../utils/scoringRules.js";
+import { parseDuprRating } from "../utils/parseDuprRating.js";
+import { linkBulkUploadPartners } from "../utils/linkRegistrationPartners.js";
+import {
+  buildPaymentEmailPayload,
+  buildPaymentRegistrationJob,
+  computeRegistrationAmountDue,
+  getPaymentPhone,
+} from "../utils/paymentRegistrationEmail.js";
 
 const {
   PlayerRegistration,
@@ -32,7 +40,24 @@ const addPlayerByHost = async (req, res) => {
 
     const hostId = req.user.id;
 
-    const { firstname, lastname, email, phoneNumber, age, gender } = req.body;
+    const body = req.body.data || req.body;
+    const {
+      firstname,
+      lastname,
+      email,
+      phoneNumber,
+      age,
+      gender,
+      partner,
+      paymentStatus: paymentStatusInput,
+      sendPaymentEmail = false,
+      duprRating: duprRatingInput,
+    } = body;
+
+    const paymentStatus =
+      paymentStatusInput === "paid" || paymentStatusInput === "refunded"
+        ? paymentStatusInput
+        : "unpaid";
 
     //validating tournament and bracket
     const tournament = await Tournament.findOne({
@@ -168,13 +193,18 @@ const addPlayerByHost = async (req, res) => {
         });
       }
 
+      const duprVal = parseDuprRating(duprRatingInput);
+      if (duprVal !== null) {
+        await player.update({ duprRating: duprVal }, { transaction: t });
+      }
+
       registration = await PlayerRegistration.create(
         {
           playerId: player.id,
           tournamentId,
           bracketId,
           status: "registered",
-          paymentStatus: "paid",
+          paymentStatus,
         },
         {
           transaction: t,
@@ -243,13 +273,18 @@ const addPlayerByHost = async (req, res) => {
         }
       );
 
+      const duprValNew = parseDuprRating(duprRatingInput);
+      if (duprValNew !== null) {
+        await player.update({ duprRating: duprValNew }, { transaction: t });
+      }
+
       registration = await PlayerRegistration.create(
         {
           playerId: player.id,
           tournamentId,
           bracketId,
           status: "registered",
-          paymentStatus: "paid",
+          paymentStatus,
         },
         {
           transaction: t,
@@ -273,12 +308,53 @@ const addPlayerByHost = async (req, res) => {
       await enqueueEmail(combinedJob);
     }
 
+    if (partner && String(partner).trim() && String(partner).trim() !== "-") {
+      await linkBulkUploadPartners(
+        [
+          {
+            registrationId: registration.id,
+            playerId: player.id,
+            bracketId: Number(bracketId),
+            email: player.email,
+            name: `${player.firstname} ${player.lastname}`.trim(),
+            row: { partner: String(partner).trim() },
+          },
+        ],
+        tournamentId,
+        t
+      );
+    }
+
+    if (paymentStatus === "unpaid" && sendPaymentEmail) {
+      const paymentPhone = getPaymentPhone(tournament.organizerInfo);
+      if (!paymentPhone) {
+        await t.rollback();
+        return res.status(400).json({
+          error: true,
+          code: 400,
+          message:
+            "Payment phone not configured in tournament settings (Courts & Fees).",
+        });
+      }
+      const amountDue = computeRegistrationAmountDue(bracket, tournament);
+      const payload = buildPaymentEmailPayload({
+        tournament,
+        bracket,
+        user: player,
+        hostUser: req.user,
+        amountDue,
+        paymentPhone,
+      });
+      await enqueueEmail(buildPaymentRegistrationJob(registration.id, payload));
+    }
+
     await t.commit();
 
     res.status(201).json({
       error: false,
       code: 201,
       message: `player ${player.firstname} ${player.lastname} added successfully`,
+      data: { registrationId: registration.id, playerId: player.id },
     });
   } catch (error) {
     await t.rollback();

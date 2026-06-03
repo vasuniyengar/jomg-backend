@@ -19,6 +19,13 @@ export async function processPaymentRegistrationJob(job) {
     return { skipped: true };
   }
 
+  if (reg.paymentStatus !== "unpaid") {
+    console.log(
+      `[Worker] paymentRegistration: registration ${registrationId} is not unpaid, skipping`
+    );
+    return { skipped: true };
+  }
+
   if (reg.paymentEmailSentCount >= MAX_PAYMENT_EMAILS) {
     console.log(
       `[Worker] paymentRegistration: limit reached for registration ${registrationId}, skipping`

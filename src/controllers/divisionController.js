@@ -21,6 +21,7 @@ import {
   getPaymentPhone,
 } from "../utils/paymentRegistrationEmail.js";
 import { linkBulkUploadPartners } from "../utils/linkRegistrationPartners.js";
+import { parseDuprRating } from "../utils/parseDuprRating.js";
 
 const {
   Tournament,
@@ -114,6 +115,7 @@ const mapBracketRow = async (bracket) => {
   return {
     ...json,
     registeredCount,
+    poolStarted: Boolean(json.poolStarted),
     formatLabel,
     eventType: isMlp ? "mlp" : isDoubles ? "doubles" : isSingles ? "singles" : "other",
     scoringConfig,
@@ -268,6 +270,9 @@ export const createDivision = async (req, res) => {
       status = "draft",
     } = req.body;
 
+    const parsedMinRating = parseDuprRating(minRating) ?? Number(minRating) || 0;
+    const parsedMaxRating = parseDuprRating(maxRating) ?? Number(maxRating) || 0;
+
     const scoringResolved = await resolveDivisionScoring(tournament, t);
     const playoffSeedingId = await resolvePlayoffSeedingId(t);
     const { event } = await findOrCreateEvent(groupId, formatId, t);
@@ -294,8 +299,8 @@ export const createDivision = async (req, res) => {
         bracketFormatId,
         minAge,
         maxAge,
-        minRating,
-        maxRating,
+        minRating: parsedMinRating,
+        maxRating: parsedMaxRating,
         status,
         startDate: startDate || tournament.startDate,
         endDate: endDate || tournament.endDate,
@@ -396,8 +401,12 @@ export const updateDivision = async (req, res) => {
         ...(registrationFee !== undefined && { registrationFee }),
         ...(minAge !== undefined && { minAge }),
         ...(maxAge !== undefined && { maxAge }),
-        ...(minRating !== undefined && { minRating }),
-        ...(maxRating !== undefined && { maxRating }),
+        ...(minRating !== undefined && {
+          minRating: parseDuprRating(minRating) ?? Number(minRating) || 0,
+        }),
+        ...(maxRating !== undefined && {
+          maxRating: parseDuprRating(maxRating) ?? Number(maxRating) || 0,
+        }),
         ...(startDate !== undefined && { startDate }),
         ...(endDate !== undefined && { endDate }),
         ...(status !== undefined && { status }),
@@ -630,6 +639,11 @@ export const bulkUploadPlayers = async (req, res) => {
             where: { userId: player.id, roleId: playerRole.id },
             transaction: t,
           });
+        }
+
+        const duprVal = parseDuprRating(row.dupr ?? row.DUPR);
+        if (duprVal !== null) {
+          await player.update({ duprRating: duprVal }, { transaction: t });
         }
 
         const existingReg = await PlayerRegistration.findOne({
@@ -882,6 +896,127 @@ export const resendPaymentEmails = async (req, res) => {
   }
 };
 
+const applyPaymentStatusToRegistration = async (
+  reg,
+  paymentStatus,
+  syncPartner,
+  tournamentId,
+  transaction
+) => {
+  await reg.update({ paymentStatus }, { transaction });
+  const updated = [{ registrationId: reg.id, paymentStatus }];
+
+  if (syncPartner !== false && reg.partnerId) {
+    const partnerReg = await PlayerRegistration.findOne({
+      where: {
+        playerId: reg.partnerId,
+        tournamentId,
+        bracketId: reg.bracketId,
+      },
+      transaction,
+    });
+    if (partnerReg && partnerReg.id !== reg.id) {
+      await partnerReg.update({ paymentStatus }, { transaction });
+      updated.push({ registrationId: partnerReg.id, paymentStatus });
+    }
+  }
+  return updated;
+};
+
+export const updateRegistrationPayment = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const { tournamentId, registrationId } = req.params;
+    const { paymentStatus, syncPartner = true } = req.body;
+    await assertHostTournament(tournamentId, req.user.id);
+
+    const reg = await PlayerRegistration.findOne({
+      where: { id: registrationId, tournamentId },
+      transaction: t,
+    });
+    if (!reg) {
+      await t.rollback();
+      return res.status(404).json({
+        code: 404,
+        error: true,
+        message: "Registration not found",
+      });
+    }
+
+    const updated = await applyPaymentStatusToRegistration(
+      reg,
+      paymentStatus,
+      syncPartner,
+      tournamentId,
+      t
+    );
+    await t.commit();
+
+    res.status(200).json({
+      code: 200,
+      error: false,
+      message: "Payment status updated",
+      data: { updated },
+    });
+  } catch (error) {
+    await t.rollback();
+    res.status(error.status || 500).json({
+      code: error.status || 500,
+      error: true,
+      message: error.message,
+    });
+  }
+};
+
+export const bulkUpdateRegistrationPayments = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const { tournamentId } = req.params;
+    const { registrationIds, paymentStatus, syncPartner = true } = req.body;
+    await assertHostTournament(tournamentId, req.user.id);
+
+    const uniqueIds = [...new Set(registrationIds.map(Number))];
+    const regs = await PlayerRegistration.findAll({
+      where: { id: { [Op.in]: uniqueIds }, tournamentId },
+      transaction: t,
+    });
+
+    const allUpdated = [];
+    const processed = new Set();
+
+    for (const reg of regs) {
+      if (processed.has(reg.id)) continue;
+      const batch = await applyPaymentStatusToRegistration(
+        reg,
+        paymentStatus,
+        syncPartner,
+        tournamentId,
+        t
+      );
+      for (const u of batch) {
+        processed.add(u.registrationId);
+        allUpdated.push(u);
+      }
+    }
+
+    await t.commit();
+
+    res.status(200).json({
+      code: 200,
+      error: false,
+      message: `Updated payment status for ${allUpdated.length} registration(s)`,
+      data: { updated: allUpdated },
+    });
+  } catch (error) {
+    await t.rollback();
+    res.status(error.status || 500).json({
+      code: error.status || 500,
+      error: true,
+      message: error.message,
+    });
+  }
+};
+
 export default {
   getBracketMeta,
   listDivisions,
@@ -890,4 +1025,6 @@ export default {
   deleteDivision,
   bulkUploadPlayers,
   resendPaymentEmails,
+  updateRegistrationPayment,
+  bulkUpdateRegistrationPayments,
 };

@@ -12,6 +12,7 @@ import {
   serializeOrganizerInfo,
   parseOrganizerInfo,
 } from "../utils/tournamentHub.js";
+import { pushPlayRulesToDivisions } from "../utils/pushPlayRulesToDivisions.js";
 
 // import s3Client from "../config/s3Client.js";
 
@@ -743,23 +744,23 @@ const updatingTournamentById = async (req, res) => {
 
     await t.commit();
 
-    // if (
-    //   req.file &&
-    //   oldS3KeyForDeletion &&
-    //   newS3KeyToStore !== oldS3KeyForDeletion
-    // ) {
-    //   const deleteCommand = new DeleteObjectCommand({
-    //     Bucket: process.env.AWS_BUCKET_NAME,
-    //     Key: oldS3KeyForDeletion,
-    //   });
-    //   await s3Client.send(deleteCommand);
-    // }
+    let divisionsScoringUpdated = 0;
+    try {
+      const pushResult = await pushPlayRulesToDivisions(
+        tournamentId,
+        updatePayload.organizerInfo ?? tournament.organizerInfo
+      );
+      divisionsScoringUpdated = pushResult.updated;
+    } catch (pushErr) {
+      console.warn("[Tournament] pushPlayRulesToDivisions:", pushErr.message);
+    }
 
     return res.status(200).json({
       error: false,
       code: 200,
       message: "Tournament updated successfully",
       tournamentData: tournament.toJSON(),
+      divisionsScoringUpdated,
       // bracketData: bracket.toJSON(),
       // eventName: eventName,
     });
@@ -778,6 +779,68 @@ const updatingTournamentById = async (req, res) => {
       error: true,
       message: error.message,
       code: 500,
+    });
+  }
+};
+
+const deleteTournamentById = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const { tournamentId } = req.params;
+    const hostId = req.user.id;
+
+    const tournament = await Tournament.findOne({
+      where: { id: tournamentId, hostId },
+      transaction: t,
+    });
+
+    if (!tournament) {
+      await t.rollback();
+      return res.status(404).json({
+        error: true,
+        code: 404,
+        message: "Tournament not found or access denied",
+      });
+    }
+
+    if (["ongoing", "completed"].includes(tournament.status)) {
+      await t.rollback();
+      return res.status(400).json({
+        error: true,
+        code: 400,
+        message: "Cannot delete a tournament that is ongoing or completed",
+      });
+    }
+
+    const regCount = await PlayerRegistration.count({
+      where: { tournamentId },
+      transaction: t,
+    });
+    if (regCount > 0) {
+      await t.rollback();
+      return res.status(400).json({
+        error: true,
+        code: 400,
+        message:
+          "Cannot delete a tournament with player registrations. Remove players first.",
+      });
+    }
+
+    await Bracket.destroy({ where: { tournamentId }, transaction: t });
+    await tournament.destroy({ transaction: t });
+    await t.commit();
+
+    return res.status(200).json({
+      error: false,
+      code: 200,
+      message: "Tournament deleted successfully",
+    });
+  } catch (error) {
+    await t.rollback();
+    return res.status(500).json({
+      error: true,
+      code: 500,
+      message: error.message,
     });
   }
 };
@@ -912,6 +975,7 @@ export default {
   getTournamentById,
   getTournamentBySlug,
   updatingTournamentById,
+  deleteTournamentById,
   getTournamentAndBracketDataByTournamentId,
   invitePlayers,
 };

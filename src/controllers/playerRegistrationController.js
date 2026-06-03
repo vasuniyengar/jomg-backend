@@ -254,6 +254,7 @@ const registeredPlayersForTournament = async (req, res) => {
           phoneNumber: reg.User.phoneNumber,
           age: reg.User.age,
           gender: reg.User.gender,
+          duprRating: reg.User.duprRating != null ? Number(reg.User.duprRating) : null,
           events: [],
         };
       }
