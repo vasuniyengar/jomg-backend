@@ -58,7 +58,6 @@ const User = sequelize.define(
     phoneNumber: {
       type: DataTypes.STRING(25),
       allowNull: false,
-      unique: true,
       validate: {
         is: /^\+?[0-9\s-()]{7,25}$/,
       },

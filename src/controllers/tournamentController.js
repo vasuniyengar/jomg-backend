@@ -11,8 +11,12 @@ import {
   hubStatusSortOrder,
   serializeOrganizerInfo,
   parseOrganizerInfo,
+  parseTournamentSettings,
+  canTransitionStatus,
+  displayStatusLabel,
 } from "../utils/tournamentHub.js";
 import { pushPlayRulesToDivisions } from "../utils/pushPlayRulesToDivisions.js";
+import { pushPricingToDivisions } from "../utils/pushPricingToDivisions.js";
 
 // import s3Client from "../config/s3Client.js";
 
@@ -681,6 +685,13 @@ const updatingTournamentById = async (req, res) => {
       updatePayload.organizerInfo = serializeOrganizerInfo(
         updatePayload.organizerInfo
       );
+      const { settings } = parseTournamentSettings(updatePayload.organizerInfo);
+      if (
+        settings.settingsConfirmed === false &&
+        tournament.status === "active"
+      ) {
+        updatePayload.status = "draft";
+      }
     }
 
     if (updatePayload.name && updatePayload.name !== tournament.name) {
@@ -745,14 +756,26 @@ const updatingTournamentById = async (req, res) => {
     await t.commit();
 
     let divisionsScoringUpdated = 0;
+    let divisionsPricingUpdated = 0;
+    const organizerInfoForPush =
+      updatePayload.organizerInfo ?? tournament.organizerInfo;
     try {
       const pushResult = await pushPlayRulesToDivisions(
         tournamentId,
-        updatePayload.organizerInfo ?? tournament.organizerInfo
+        organizerInfoForPush
       );
       divisionsScoringUpdated = pushResult.updated;
     } catch (pushErr) {
       console.warn("[Tournament] pushPlayRulesToDivisions:", pushErr.message);
+    }
+    try {
+      const pricingResult = await pushPricingToDivisions(
+        tournamentId,
+        organizerInfoForPush
+      );
+      divisionsPricingUpdated = pricingResult.updated;
+    } catch (pushErr) {
+      console.warn("[Tournament] pushPricingToDivisions:", pushErr.message);
     }
 
     return res.status(200).json({
@@ -761,6 +784,7 @@ const updatingTournamentById = async (req, res) => {
       message: "Tournament updated successfully",
       tournamentData: tournament.toJSON(),
       divisionsScoringUpdated,
+      divisionsPricingUpdated,
       // bracketData: bracket.toJSON(),
       // eventName: eventName,
     });
@@ -840,6 +864,245 @@ const deleteTournamentById = async (req, res) => {
     return res.status(500).json({
       error: true,
       code: 500,
+      message: error.message,
+    });
+  }
+};
+
+const getTournamentDashboard = async (req, res) => {
+  try {
+    const { tournamentId } = req.params;
+    const hostId = req.user.id;
+
+    const tournament = await Tournament.findOne({
+      where: { id: tournamentId, hostId },
+      include: [
+        { model: Club, attributes: ["id", "name"] },
+        {
+          model: Bracket,
+          include: [
+            { model: Event, attributes: ["eventName"] },
+            { model: BracketFormat, attributes: ["name"] },
+          ],
+        },
+      ],
+    });
+
+    if (!tournament) {
+      return res.status(404).json({
+        code: 404,
+        error: true,
+        message: "Tournament not found or access denied",
+      });
+    }
+
+    const { settings } = parseTournamentSettings(tournament.organizerInfo);
+    const brackets = [];
+    let totalRegistered = 0;
+    let totalCapacity = 0;
+
+    for (const bracket of tournament.Brackets || []) {
+      const registeredCount = await enrichBracketRegistrationStats(bracket);
+      const maxTeams = Number(bracket.maxTeams || 0);
+      const fillPct =
+        maxTeams > 0 ? Math.round((registeredCount / maxTeams) * 100) : 0;
+      totalRegistered += registeredCount;
+      totalCapacity += maxTeams;
+
+      brackets.push({
+        id: bracket.id,
+        name: bracket.name,
+        formatLabel: bracket.BracketFormat?.name || bracket.Event?.eventName,
+        eventName: bracket.Event?.eventName,
+        maxTeams,
+        registeredCount,
+        fillPct,
+        status: bracket.status,
+        poolStarted: Boolean(bracket.poolStarted),
+        registrationFee: Number(bracket.registrationFee || 0),
+      });
+    }
+
+    const paidCount = await PlayerRegistration.count({
+      where: { tournamentId, paymentStatus: "paid" },
+    });
+    const revenue = Math.round(paidCount * Number(tournament.entryFee || 0));
+
+    const infoComplete = Boolean(
+      tournament.name &&
+        tournament.startDate &&
+        tournament.endDate &&
+        tournament.location
+    );
+
+    const checklist = {
+      infoComplete,
+      hasDivisions: brackets.length > 0,
+      settingsConfirmed: Boolean(settings.settingsConfirmed),
+      isPublished: tournament.status === "active" || tournament.status === "ongoing",
+      isLive: tournament.status === "ongoing",
+      anyPoolStarted: brackets.some((b) => b.poolStarted),
+    };
+
+    return res.status(200).json({
+      code: 200,
+      error: false,
+      data: {
+        tournament: {
+          id: tournament.id,
+          name: tournament.name,
+          slug: tournament.slug,
+          status: tournament.status,
+          displayStatus: displayStatusLabel(tournament.status),
+          hubStatus: computeHubStatus(tournament.toJSON()),
+          location: tournament.location,
+          venue: tournament.venue,
+          startDate: tournament.startDate,
+          endDate: tournament.endDate,
+          duprRecorded: tournament.duprRecorded,
+          duprEnforced: tournament.duprEnforced,
+          banner: tournament.tournamentTumbnail || null,
+          clubName: tournament.Club?.name,
+        },
+        settingsConfirmed: Boolean(settings.settingsConfirmed),
+        settingsConfirmedAt: settings.settingsConfirmedAt,
+        metrics: {
+          registeredPlayers: totalRegistered,
+          totalCapacity,
+          fillPct:
+            totalCapacity > 0
+              ? Math.round((totalRegistered / totalCapacity) * 100)
+              : 0,
+          revenue,
+          divisionCount: brackets.length,
+        },
+        brackets,
+        checklist,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      code: 500,
+      error: true,
+      message: error.message,
+    });
+  }
+};
+
+const patchTournamentStatus = async (req, res) => {
+  try {
+    const { tournamentId } = req.params;
+    const { status: nextStatus } = req.body;
+    const hostId = req.user.id;
+
+    const tournament = await Tournament.findOne({
+      where: { id: tournamentId, hostId },
+    });
+
+    if (!tournament) {
+      return res.status(404).json({
+        code: 404,
+        error: true,
+        message: "Tournament not found or access denied",
+      });
+    }
+
+    const current = tournament.status;
+    if (!canTransitionStatus(current, nextStatus)) {
+      return res.status(400).json({
+        code: 400,
+        error: true,
+        message: `Cannot change status from ${displayStatusLabel(current)} to ${displayStatusLabel(nextStatus)}`,
+      });
+    }
+
+    if (nextStatus === "active") {
+      const { settings } = parseTournamentSettings(tournament.organizerInfo);
+      if (!settings.settingsConfirmed) {
+        return res.status(400).json({
+          code: 400,
+          error: true,
+          message:
+            "Confirm tournament settings before publishing.",
+        });
+      }
+    }
+
+    await tournament.update({ status: nextStatus });
+
+    return res.status(200).json({
+      code: 200,
+      error: false,
+      message: "Tournament status updated",
+      data: {
+        status: tournament.status,
+        displayStatus: displayStatusLabel(tournament.status),
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      code: 500,
+      error: true,
+      message: error.message,
+    });
+  }
+};
+
+const pushTournamentSettings = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const { tournamentId } = req.params;
+    const { sections = [], bracketIds } = req.body;
+    const hostId = req.user.id;
+
+    const tournament = await Tournament.findOne({
+      where: { id: tournamentId, hostId },
+      transaction: t,
+    });
+
+    if (!tournament) {
+      await t.rollback();
+      return res.status(404).json({
+        code: 404,
+        error: true,
+        message: "Tournament not found or access denied",
+      });
+    }
+
+    const organizerInfo = tournament.organizerInfo;
+    const results = { playRules: 0, pricing: 0 };
+
+    if (sections.includes("playRules")) {
+      const r = await pushPlayRulesToDivisions(
+        tournamentId,
+        organizerInfo,
+        t
+      );
+      results.playRules = r.updated;
+    }
+    if (sections.includes("pricing")) {
+      const r = await pushPricingToDivisions(
+        tournamentId,
+        organizerInfo,
+        { bracketIds },
+        t
+      );
+      results.pricing = r.updated;
+    }
+
+    await t.commit();
+
+    return res.status(200).json({
+      code: 200,
+      error: false,
+      message: "Settings pushed to divisions",
+      data: results,
+    });
+  } catch (error) {
+    await t.rollback();
+    return res.status(500).json({
+      code: 500,
+      error: true,
       message: error.message,
     });
   }
@@ -977,5 +1240,8 @@ export default {
   updatingTournamentById,
   deleteTournamentById,
   getTournamentAndBracketDataByTournamentId,
+  getTournamentDashboard,
+  patchTournamentStatus,
+  pushTournamentSettings,
   invitePlayers,
 };

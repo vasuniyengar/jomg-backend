@@ -2,9 +2,16 @@ import { parseOrganizerInfo } from "./tournamentHub.js";
 
 export const MAX_PAYMENT_EMAILS = 3;
 
-export function getPaymentPhone(tournament) {
-  const org = parseOrganizerInfo(tournament.organizerInfo);
-  return org.paymentPhone || org.phone || "";
+export function getPaymentPhone(tournamentOrOrganizerInfo) {
+  const organizerInfo =
+    tournamentOrOrganizerInfo != null &&
+    typeof tournamentOrOrganizerInfo === "object" &&
+    "organizerInfo" in tournamentOrOrganizerInfo
+      ? tournamentOrOrganizerInfo.organizerInfo
+      : tournamentOrOrganizerInfo;
+  const org = parseOrganizerInfo(organizerInfo);
+  const phone = String(org.paymentPhone || org.phone || "").trim();
+  return phone;
 }
 
 export function computeRegistrationAmountDue(bracket, tournament) {

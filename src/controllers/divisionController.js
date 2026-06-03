@@ -95,6 +95,89 @@ const resolveDivisionScoring = async (tournament, transaction = null) => {
   }
 };
 
+const mergeDivisionScoringConfig = (resolved, input, tournament) => {
+  const useGlobal = input?.useGlobalSettings !== false;
+  const existing =
+    resolved?.scoringConfig && typeof resolved.scoringConfig === "object"
+      ? { ...resolved.scoringConfig }
+      : {};
+
+  const scoringConfig = {
+    ...existing,
+    useGlobalSettings: useGlobal,
+    ...(input?.accentColor != null && String(input.accentColor).trim() !== ""
+      ? { accentColor: String(input.accentColor).trim() }
+      : existing.accentColor
+        ? { accentColor: existing.accentColor }
+        : {}),
+    ...(input?.registrationOn !== undefined
+      ? { registrationOn: Boolean(input.registrationOn) }
+      : {}),
+    ...(input?.showPublic !== undefined
+      ? { showPublic: Boolean(input.showPublic) }
+      : {}),
+    ...(input?.duprRecorded !== undefined
+      ? { duprRecorded: Boolean(input.duprRecorded) }
+      : {}),
+    ...(input?.duprEnforced !== undefined
+      ? { duprEnforced: Boolean(input.duprEnforced) }
+      : {}),
+    ...(input?.duprCombinedMin !== undefined
+      ? { duprCombinedMin: input.duprCombinedMin }
+      : {}),
+    ...(input?.duprCombinedMax !== undefined
+      ? { duprCombinedMax: input.duprCombinedMax }
+      : {}),
+    ...(input?.skillLevel !== undefined
+      ? { skillLevel: String(input.skillLevel || "").trim() }
+      : {}),
+  };
+
+  if (!useGlobal) {
+    scoringConfig.pricingTiers = input?.pricingTiers || [];
+    if (input?.matchScoring && typeof input.matchScoring === "object") {
+      scoringConfig.matchScoring = input.matchScoring;
+    }
+  }
+
+  if (scoringConfig.duprRecorded === undefined) {
+    scoringConfig.duprRecorded = Boolean(tournament?.duprRecorded ?? true);
+  }
+  if (scoringConfig.duprEnforced === undefined) {
+    scoringConfig.duprEnforced = Boolean(tournament?.duprEnforced ?? false);
+  }
+  if (scoringConfig.registrationOn === undefined) {
+    scoringConfig.registrationOn = true;
+  }
+  if (scoringConfig.showPublic === undefined) {
+    scoringConfig.showPublic = true;
+  }
+
+  return { ...resolved, scoringConfig };
+};
+
+const buildDivisionScoringFields = async (
+  tournament,
+  body,
+  transaction,
+  existingBracket = null
+) => {
+  const resolved = await resolveDivisionScoring(tournament, transaction);
+  const input = body.scoringConfig || {};
+  const prior = existingBracket ? parseScoringConfig(existingBracket) || {} : {};
+  const useGlobal = input.useGlobalSettings !== false;
+
+  const baseConfig = useGlobal
+    ? { ...prior, ...resolved.scoringConfig }
+    : { ...resolved.scoringConfig, ...prior };
+
+  return mergeDivisionScoringConfig(
+    { ...resolved, scoringConfig: baseConfig },
+    input,
+    tournament
+  );
+};
+
 const findOrCreateEvent = async (groupId, formatId, transaction) => {
   const [group, format] = await Promise.all([
     Group.findByPk(groupId, { transaction }),
@@ -166,6 +249,20 @@ const normalizeGender = (value) => {
   if (g.startsWith("f")) return "female";
   if (g.startsWith("m")) return "male";
   return "male";
+};
+
+const normalizeRegistrationPaymentStatus = (row) => {
+  const v = String(row.paymentStatus || row.PaymentStatus || "unpaid")
+    .trim()
+    .toLowerCase();
+  if (v === "paid" || v === "refunded") return v;
+  return "unpaid";
+};
+
+const resolveBulkUploadPhone = (row) => {
+  const phone = String(row.phone || row.Phone || "").trim();
+  if (phone && /^\+?[0-9\s-()]{7,25}$/.test(phone)) return phone;
+  return "+10000000000";
 };
 
 const partnerMatches = (row, other) => {
@@ -287,10 +384,14 @@ export const createDivision = async (req, res) => {
       status = "draft",
     } = req.body;
 
-    const parsedMinRating = parseDuprRating(minRating) ?? Number(minRating) || 0;
-    const parsedMaxRating = parseDuprRating(maxRating) ?? Number(maxRating) || 0;
+    const parsedMinRating = parseDuprRating(minRating) ?? (Number(minRating) || 0);
+    const parsedMaxRating = parseDuprRating(maxRating) ?? (Number(maxRating) || 0);
 
-    const scoringResolved = await resolveDivisionScoring(tournament, t);
+    const scoringResolved = await buildDivisionScoringFields(
+      tournament,
+      req.body,
+      t
+    );
     const playoffSeedingId = await resolvePlayoffSeedingId(t);
     const { event } = await findOrCreateEvent(groupId, formatId, t);
 
@@ -405,9 +506,9 @@ export const updateDivision = async (req, res) => {
       eventId = event.id;
     }
 
-    const scoringResolved = tournament
-      ? await resolveDivisionScoring(tournament, t)
-      : null;
+    const scoringFields = tournament
+      ? await buildDivisionScoringFields(tournament, req.body, t, bracket)
+      : {};
 
     await bracket.update(
       {
@@ -419,15 +520,15 @@ export const updateDivision = async (req, res) => {
         ...(minAge !== undefined && { minAge }),
         ...(maxAge !== undefined && { maxAge }),
         ...(minRating !== undefined && {
-          minRating: parseDuprRating(minRating) ?? Number(minRating) || 0,
+          minRating: parseDuprRating(minRating) ?? (Number(minRating) || 0),
         }),
         ...(maxRating !== undefined && {
-          maxRating: parseDuprRating(maxRating) ?? Number(maxRating) || 0,
+          maxRating: parseDuprRating(maxRating) ?? (Number(maxRating) || 0),
         }),
         ...(startDate !== undefined && { startDate }),
         ...(endDate !== undefined && { endDate }),
         ...(status !== undefined && { status }),
-        ...(scoringResolved || {}),
+        ...(scoringFields || {}),
       },
       { transaction: t }
     );
@@ -627,6 +728,7 @@ export const bulkUploadPlayers = async (req, res) => {
         }
 
         const { firstname, lastname } = parseName(name);
+        const regPaymentStatus = normalizeRegistrationPaymentStatus(row);
         let player = await User.findOne({ where: { email }, transaction: t });
 
         if (!player) {
@@ -640,16 +742,16 @@ export const bulkUploadPlayers = async (req, res) => {
               password,
               age: Number(row.age || 30) || 30,
               gender,
-              phoneNumber: String(row.phone || row.Phone || "").trim() || undefined,
+              phoneNumber: resolveBulkUploadPhone(row),
               isVerified: false,
               accountExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
               verificationToken,
-              duprId: String(row.duprId || row.DuprID || "").trim() || null,  
-              instagram: String(row.instagram || "").trim() || null,            
-              facebook: String(row.facebook || "").trim() || null,             
-              paymentMethod: String(row.paymentMethod || "").trim() || null,  
-             paymentStatus: String(row.paymentStatus || "unpaid").trim(),    
-             roleId: 4
+              duprId: String(row.duprId || row.DuprID || "").trim() || null,
+              instagram: String(row.instagram || "").trim() || null,
+              facebook: String(row.facebook || "").trim() || null,
+              paymentMethod: String(row.paymentMethod || "").trim() || null,
+              paymentStatus: regPaymentStatus,
+              roleId: playerRole.id,
             },
             { transaction: t }
           );
@@ -676,7 +778,9 @@ export const bulkUploadPlayers = async (req, res) => {
         } 
         
 
-        const duprVal = parseDuprRating(row.dupr ?? row.DUPR);
+        const duprVal =
+          parseDuprRating(row.dupr ?? row.DUPR) ??
+          parseDuprRating(row.duprId ?? row.DuprID);
         if (duprVal !== null) {
           await player.update({ duprRating: duprVal }, { transaction: t });
         }
@@ -707,30 +811,21 @@ export const bulkUploadPlayers = async (req, res) => {
           continue;
         }
 
-        // const registration = await PlayerRegistration.create(
-        //   {
-        //     playerId: player.id,
-        //     tournamentId,
-        //     bracketId: bracket.id,
-        //     status: "registered",
-        //     paymentStatus: "unpaid",
-        //   },
-        //   { transaction: t }
-        // );
         const registration = await PlayerRegistration.create(
-        {
-          playerId: player.id,
-          tournamentId,
-          bracketId: bracket.id,
-          status: "registered",
-          paymentStatus: "unpaid",
-          playerRole: String(row.role || "starter").trim().toLowerCase(),
-          division: String(row.division || "").trim() || null,                
-          rosterNumber: String(row.rosterNumber || row.roster_number || "").trim() || null, 
-          clubName: String(row.clubName || row.club_name || "").trim() || null, 
-        },
-        { transaction: t }
-      );
+          {
+            playerId: player.id,
+            tournamentId,
+            bracketId: bracket.id,
+            status: "registered",
+            paymentStatus: regPaymentStatus,
+            playerRole: String(row.role || "starter").trim().toLowerCase(),
+            division: String(row.division || "").trim() || null,
+            rosterNumber:
+              String(row.rosterNumber || row.roster_number || "").trim() || null,
+            clubName: String(row.clubName || row.club_name || "").trim() || null,
+          },
+          { transaction: t }
+        );
         
        const teamName = String(
             row.teamName || row.team_name || ""
@@ -782,7 +877,7 @@ export const bulkUploadPlayers = async (req, res) => {
           row,
         });
 
-        if (sendEmails) {
+        if (sendEmails && regPaymentStatus === "unpaid") {
           emailQueue.push({
             registrationId: registration.id,
             payload: buildPaymentEmailPayload({
@@ -1007,11 +1102,31 @@ const applyPaymentStatusToRegistration = async (
   return updated;
 };
 
+const safeRollback = async (transaction) => {
+  if (!transaction) return;
+  try {
+    await transaction.rollback();
+  } catch {
+    /* already finished */
+  }
+};
+
 export const updateRegistrationPayment = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { tournamentId, registrationId } = req.params;
+    const tournamentId = Number(req.params.tournamentId);
+    const registrationId = Number(req.params.registrationId);
     const { paymentStatus, syncPartner = true } = req.body;
+
+    if (!Number.isInteger(tournamentId) || !Number.isInteger(registrationId)) {
+      await safeRollback(t);
+      return res.status(400).json({
+        code: 400,
+        error: true,
+        message: "Invalid tournament or registration id",
+      });
+    }
+
     await assertHostTournament(tournamentId, req.user.id);
 
     const reg = await PlayerRegistration.findOne({
@@ -1019,7 +1134,7 @@ export const updateRegistrationPayment = async (req, res) => {
       transaction: t,
     });
     if (!reg) {
-      await t.rollback();
+      await safeRollback(t);
       return res.status(404).json({
         code: 404,
         error: true,
@@ -1043,11 +1158,11 @@ export const updateRegistrationPayment = async (req, res) => {
       data: { updated },
     });
   } catch (error) {
-    await t.rollback();
+    await safeRollback(t);
     res.status(error.status || 500).json({
       code: error.status || 500,
       error: true,
-      message: error.message,
+      message: error.message || "Failed to update payment status",
     });
   }
 };
@@ -1055,11 +1170,27 @@ export const updateRegistrationPayment = async (req, res) => {
 export const bulkUpdateRegistrationPayments = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { tournamentId } = req.params;
+    const tournamentId = Number(req.params.tournamentId);
     const { registrationIds, paymentStatus, syncPartner = true } = req.body;
+
+    if (!Number.isInteger(tournamentId)) {
+      await safeRollback(t);
+      return res.status(400).json({
+        code: 400,
+        error: true,
+        message: "Invalid tournament id",
+      });
+    }
+
     await assertHostTournament(tournamentId, req.user.id);
 
-    const uniqueIds = [...new Set(registrationIds.map(Number))];
+    const uniqueIds = [
+      ...new Set(
+        (registrationIds || [])
+          .map(Number)
+          .filter((id) => Number.isInteger(id) && id > 0)
+      ),
+    ];
     const regs = await PlayerRegistration.findAll({
       where: { id: { [Op.in]: uniqueIds }, tournamentId },
       transaction: t,
@@ -1092,11 +1223,11 @@ export const bulkUpdateRegistrationPayments = async (req, res) => {
       data: { updated: allUpdated },
     });
   } catch (error) {
-    await t.rollback();
+    await safeRollback(t);
     res.status(error.status || 500).json({
       code: error.status || 500,
       error: true,
-      message: error.message,
+      message: error.message || "Failed to update payment status",
     });
   }
 };

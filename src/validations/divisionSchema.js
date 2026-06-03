@@ -14,6 +14,21 @@ const divisionBodySchema = Joi.object({
   startDate: Joi.string().allow("", null).optional(),
   endDate: Joi.string().allow("", null).optional(),
   status: Joi.string().valid("draft", "active", "ongoing", "completed").optional(),
+  scoringConfig: Joi.object({
+    useGlobalSettings: Joi.boolean().optional(),
+    accentColor: Joi.string().max(32).allow("", null).optional(),
+    registrationOn: Joi.boolean().optional(),
+    showPublic: Joi.boolean().optional(),
+    duprRecorded: Joi.boolean().optional(),
+    duprEnforced: Joi.boolean().optional(),
+    duprCombinedMin: Joi.number().min(0).max(20).allow(null).optional(),
+    duprCombinedMax: Joi.number().min(0).max(20).allow(null).optional(),
+    skillLevel: Joi.string().max(120).allow("", null).optional(),
+    pricingTiers: Joi.array().optional(),
+    matchScoring: Joi.object().optional(),
+  })
+    .unknown(true)
+    .optional(),
 });
 
 export const validateCreateDivision = (req, res, next) => {
@@ -51,4 +66,11 @@ export const validateBulkPaymentPatch = (req, res, next) => {
     return res.status(400).json({ code: 400, error: true, message: error.details[0].message });
   }
   next();
+};
+
+export default {
+  validateCreateDivision,
+  validateUpdateDivision,
+  validatePaymentPatch,
+  validateBulkPaymentPatch,
 };

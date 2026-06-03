@@ -326,7 +326,7 @@ const addPlayerByHost = async (req, res) => {
     }
 
     if (paymentStatus === "unpaid" && sendPaymentEmail) {
-      const paymentPhone = getPaymentPhone(tournament.organizerInfo);
+      const paymentPhone = getPaymentPhone(tournament);
       if (!paymentPhone) {
         await t.rollback();
         return res.status(400).json({

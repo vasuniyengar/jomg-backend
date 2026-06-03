@@ -50,6 +50,10 @@ if (frontendUrl && !allowedOrigins.includes(frontendUrl)) {
 const isDev = process.env.NODE_ENV !== "production";
 const isLocalOrigin = (origin) =>
   /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+const isPrivateLanOrigin = (origin) =>
+  /^https?:\/\/(?:192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/.test(
+    origin
+  );
 
 app.use(helmet());
 app.use(
@@ -61,7 +65,7 @@ app.use(
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
-      if (isDev && isLocalOrigin(origin)) {
+      if (isDev && (isLocalOrigin(origin) || isPrivateLanOrigin(origin))) {
         return callback(null, true);
       }
       return callback(new Error("CORS origin denied"));
@@ -126,6 +130,17 @@ const startServer = async () => {
     console.log("database connected");
     httpServer = app.listen(port, "0.0.0.0", () => {
       console.log(`Server is running on port ${port}`);
+    });
+
+    httpServer.on("error", (err) => {
+      if (err.code === "EADDRINUSE") {
+        console.error(
+          `Port ${port} is already in use. Stop the other process (e.g. lsof -i :${port}) and restart.`
+        );
+      } else {
+        console.error("HTTP server error:", err);
+      }
+      process.exit(1);
     });
   } catch (error) {
     console.error("Startup failure", error);

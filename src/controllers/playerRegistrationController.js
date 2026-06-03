@@ -210,6 +210,8 @@ const registeredPlayersForTournament = async (req, res) => {
             "gender",
             "age",
             "phoneNumber",
+            "duprRating",
+            "duprId",
           ],
         },
         {
@@ -255,6 +257,7 @@ const registeredPlayersForTournament = async (req, res) => {
           age: reg.User.age,
           gender: reg.User.gender,
           duprRating: reg.User.duprRating != null ? Number(reg.User.duprRating) : null,
+          duprId: reg.User.duprId || null,
           events: [],
         };
       }
@@ -284,6 +287,9 @@ const registeredPlayersForTournament = async (req, res) => {
         partnerId,
         partnerName,
         partnerCheckInStatus,
+        clubName: reg.clubName || null,
+        rosterNumber: reg.rosterNumber || null,
+        playerRole: reg.playerRole || null,
       });
     });
 

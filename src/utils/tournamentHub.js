@@ -89,7 +89,23 @@ export function parseTournamentSettings(organizerInfo) {
       passwordProtected: false,
       waitlistEnabled: true,
     },
+    tournamentInfo: {
+      refundPolicy: {
+        fullWindow:
+          "Players or clubs receive a full refund up until the week before the tournament date. No refunds are issued after that.",
+        replacement: "Players with a replacement can swap by reaching out to us.",
+        questions: "Reach out to JOMG Pickleball at info@jomgpickleball.com.",
+      },
+      spectators: { ticketFee: 0, maxCapacity: "" },
+      duprRequirementsText: "",
+      duprRequirementsManual: false,
+      sponsors: [],
+      organizerOverride: false,
+    },
   };
+
+  const tournamentInfoDefaults = defaults.tournamentInfo;
+  const parsedTournamentInfo = parsed.tournamentInfo || {};
 
   return {
     organizer: {
@@ -105,6 +121,44 @@ export function parseTournamentSettings(organizerInfo) {
       playRules: { ...defaults.playRules, ...(parsed.playRules || {}) },
       notifications: { ...defaults.notifications, ...(parsed.notifications || {}) },
       visibility: { ...defaults.visibility, ...(parsed.visibility || {}) },
+      tournamentInfo: {
+        ...tournamentInfoDefaults,
+        ...parsedTournamentInfo,
+        refundPolicy: {
+          ...tournamentInfoDefaults.refundPolicy,
+          ...(parsedTournamentInfo.refundPolicy || {}),
+        },
+        spectators: {
+          ...tournamentInfoDefaults.spectators,
+          ...(parsedTournamentInfo.spectators || {}),
+        },
+      },
     },
   };
+}
+
+const ALLOWED_STATUS_TRANSITIONS = {
+  draft: ["active"],
+  active: ["draft", "ongoing"],
+  ongoing: ["completed"],
+  completed: [],
+};
+
+export function canTransitionStatus(from, to) {
+  return (ALLOWED_STATUS_TRANSITIONS[from] || []).includes(to);
+}
+
+export function displayStatusLabel(status) {
+  switch (status) {
+    case "draft":
+      return "Draft";
+    case "active":
+      return "Published";
+    case "ongoing":
+      return "Live";
+    case "completed":
+      return "Completed";
+    default:
+      return status || "Draft";
+  }
 }

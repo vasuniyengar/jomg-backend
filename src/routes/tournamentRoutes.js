@@ -93,6 +93,29 @@ router.put(
   bracketController.updatingBracket
 );
 
+router.get(
+  "/:tournamentId/dashboard",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  tournamentControllers.getTournamentDashboard
+);
+
+router.patch(
+  "/:tournamentId/status",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  tournamentValidations.statusPatchValidation,
+  tournamentControllers.patchTournamentStatus
+);
+
+router.post(
+  "/:tournamentId/settings/push",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  tournamentValidations.settingsPushValidation,
+  tournamentControllers.pushTournamentSettings
+);
+
 router.get("/:tournamentId", tournamentControllers.getTournamentById);
 
 router.get(
@@ -135,19 +158,19 @@ router.put(
 );
 
 router.patch(
-  "/:tournamentId/registrations/:registrationId/payment",
-  middleware.authenticate,
-  middleware.authorizeRole(ORGANIZER_ROLES),
-  divisionValidations.validatePaymentPatch,
-  divisionController.updateRegistrationPayment
-);
-
-router.patch(
   "/:tournamentId/registrations/payment-bulk",
   middleware.authenticate,
   middleware.authorizeRole(ORGANIZER_ROLES),
   divisionValidations.validateBulkPaymentPatch,
   divisionController.bulkUpdateRegistrationPayments
+);
+
+router.patch(
+  "/:tournamentId/registrations/:registrationId/payment",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  divisionValidations.validatePaymentPatch,
+  divisionController.updateRegistrationPayment
 );
 
 router.delete(
