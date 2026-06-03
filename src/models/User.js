@@ -43,6 +43,10 @@ const User = sequelize.define(
     //   type: DataTypes.TEXT, // or STRING if you prefer
     //   allowNull: true,
     // },
+    duprRating: {
+      type: DataTypes.DECIMAL(4, 2),
+      allowNull: true,
+    },
     age: {
       type: DataTypes.INTEGER,
       allowNull: false,
@@ -54,7 +58,6 @@ const User = sequelize.define(
     phoneNumber: {
       type: DataTypes.STRING(25),
       allowNull: false,
-      unique: true,
       validate: {
         is: /^\+?[0-9\s-()]{7,25}$/,
       },

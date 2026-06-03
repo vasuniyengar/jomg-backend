@@ -157,6 +157,29 @@ const tournamentUpdateValidation = (req, res, next) => {
           "string.uri": "Thumbnail must be a valid URL",
         }),
       })
+      .or(
+        "name",
+        "description",
+        "entryFee",
+        "clubId",
+        "discount",
+        "venue",
+        "location",
+        "timezone",
+        "startDate",
+        "endDate",
+        "registrationOpenDate",
+        "registrationCloseDate",
+        "refundDeadline",
+        "refundFee",
+        "duprRecorded",
+        "duprEnforced",
+        "requireSkillRating",
+        "status",
+        "organizerInfo",
+        "slug",
+        "tournamentTumbnail"
+      )
       .min(1);
 
     const { error, value } = updateSchema.validate(req.body, {
@@ -182,4 +205,47 @@ const tournamentUpdateValidation = (req, res, next) => {
   }
 };
 
-export default { tournamentCreateValidation, tournamentUpdateValidation };
+const statusPatchSchema = Joi.object({
+  status: Joi.string()
+    .valid("draft", "active", "ongoing", "completed")
+    .required(),
+});
+
+const settingsPushSchema = Joi.object({
+  sections: Joi.array()
+    .items(Joi.string().valid("pricing", "playRules", "dupr"))
+    .min(1)
+    .required(),
+  bracketIds: Joi.array().items(Joi.number().integer().positive()).optional(),
+});
+
+const statusPatchValidation = (req, res, next) => {
+  const { error } = statusPatchSchema.validate(req.body, { abortEarly: true });
+  if (error) {
+    return res.status(400).json({
+      code: 400,
+      error: true,
+      message: error.details[0].message,
+    });
+  }
+  next();
+};
+
+const settingsPushValidation = (req, res, next) => {
+  const { error } = settingsPushSchema.validate(req.body, { abortEarly: true });
+  if (error) {
+    return res.status(400).json({
+      code: 400,
+      error: true,
+      message: error.details[0].message,
+    });
+  }
+  next();
+};
+
+export default {
+  tournamentCreateValidation,
+  tournamentUpdateValidation,
+  statusPatchValidation,
+  settingsPushValidation,
+};

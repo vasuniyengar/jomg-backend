@@ -36,7 +36,11 @@ const PlayerRegistration = sequelize.define(
       allowNull: false,
       defaultValue: "registered",
     },
-   
+    paymentStatus: {
+      type: DataTypes.ENUM("paid", "unpaid", "refunded"),
+      allowNull: false,
+      defaultValue: "unpaid",
+    },
     paymentEmailSentCount: {
       type: DataTypes.INTEGER,
       allowNull: false,

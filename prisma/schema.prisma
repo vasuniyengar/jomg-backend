@@ -24,6 +24,7 @@ model User {
   passwordResetToken  String?
   passwordResetExpires DateTime?
   accountExpiresAt    DateTime?
+  duprRating          Decimal?             @db.Decimal(4, 2)
   tokenVersion        Int                  @default(0)
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
@@ -187,8 +188,8 @@ model Bracket {
   maxTeams        Int
   minAge          Int?                 @default(0)
   maxAge          Int?                 @default(0)
-  minRating       Int                  @default(0)
-  maxRating       Int                  @default(0)
+  minRating       Decimal              @default(0) @db.Decimal(4, 2)
+  maxRating       Decimal              @default(0) @db.Decimal(4, 2)
   bracketFormatId Int
   scoringListId   Int
   playoffSeedingId Int
