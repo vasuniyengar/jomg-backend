@@ -1439,6 +1439,7 @@ const getPoolsWithTeams = async (req, res) => {
       include: [
         {
           model: PoolTeam,
+          attributes: ["poolId", "teamId"],
           include: [
             {
               model: Team,
@@ -1472,10 +1473,8 @@ const getPoolsWithTeams = async (req, res) => {
         },
       ],
       order: [
-        ["id", "ASC"],
-        [PoolTeam, Team, PoolTeamStats, "wins", "DESC"],
-        [PoolTeam, Team, PoolTeamStats, "pointDifference", "DESC"],
-      ],
+  ["id", "ASC"],
+],
     });
 
     const result = pools.map((pool) => ({
@@ -1503,6 +1502,7 @@ const getPoolsWithTeams = async (req, res) => {
       data: result,
     });
   } catch (error) {
+      
     // console.error("getPoolsWithTeams error:", error);
     return res.status(500).json({
       error: true,
@@ -1543,7 +1543,8 @@ const getPoolDetails = async (req, res) => {
       where: { bracketId, tournamentId, id: poolId },
       include: [
         {
-          model: PoolTeam,
+         model: PoolTeam,
+          attributes: ["poolId", "teamId"],
           include: [
             {
               model: Team,
