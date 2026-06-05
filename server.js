@@ -34,6 +34,9 @@ import hostRoutes from "./src/routes/hostRoutes.js";
 import verifyRoutes from "./src/routes/verifyRoutes.js";
 
 import playerRegistrationRoutes from "./src/routes/playerRegistrationRoutes.js";
+import roundRobinRouter from "./src/routes/roundRobinRoutes.js";
+
+
 
 const app = express();
 
@@ -102,7 +105,7 @@ app.use("/api/users", userRoutes);
 
 app.use("/api/auth", authRoutes);
 app.use("/api", authSigninRoutes);
-
+app.use("/api/round-robin", roundRobinRouter);
 app.use("/api/clubs", clubRoutes);
 
 app.use("/api/tournaments", tournamentRoutes);
