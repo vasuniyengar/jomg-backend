@@ -1,5 +1,17 @@
 import prisma from "../config/prisma.js";
 
+async function assertHostTournament(tournamentId, hostId) {
+  const tournament = await prisma.tournament.findFirst({
+    where: { id: Number(tournamentId), hostId: Number(hostId) },
+  });
+  if (!tournament) {
+    const err = new Error("Tournament not found or access denied");
+    err.status = 404;
+    throw err;
+  }
+  return tournament;
+}
+
 const createRoundRobin = async (req, res) => {
   try {
     const { tournamentId, bracketId, teamsPerPool } = req.body;
@@ -8,7 +20,7 @@ const createRoundRobin = async (req, res) => {
     const parsedBracketId = Number(bracketId);
     const parsedTeamsPerPool = Number(teamsPerPool);
 
-    // Validate tournament and bracket exist
+    await assertHostTournament(parsedTournamentId, req.user.id);
     let bracket;
     try {
       bracket = await prisma.bracket.findFirst({
@@ -47,7 +59,11 @@ if (existingPools.length > 0) {
     let teams;
     try {
       teams = await prisma.team.findMany({
-        where: { bracketId: parsedBracketId, tournamentId: parsedTournamentId },
+        where: {
+          bracketId: parsedBracketId,
+          tournamentId: parsedTournamentId,
+          status: { notIn: ["waitlist", "withdrawn", "forfeited"] },
+        },
       });
     } catch (e) {
       console.error("FAILED AT team.findMany:", e.message);
@@ -209,6 +225,8 @@ const getPoolsByBracket = async (req, res) => {
     const tournamentId = Number(req.params.tournamentId);
     const bracketId = Number(req.params.bracketId);
 
+    await assertHostTournament(tournamentId, req.user.id);
+
     let pools;
     try {
       pools = await prisma.pool.findMany({
@@ -249,6 +267,8 @@ const deleteRoundRobin = async (req, res) => {
   try {
     const tournamentId = Number(req.params.tournamentId);
     const bracketId = Number(req.params.bracketId);
+
+    await assertHostTournament(tournamentId, req.user.id);
 
     // Get all pools for this bracket
     const pools = await prisma.pool.findMany({

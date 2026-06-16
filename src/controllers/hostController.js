@@ -1863,7 +1863,7 @@ const getTeamsWithPoolAndPlayers = async (req, res) => {
     // Fetch all teams in this tournament/bracket with pool and players
     const teams = await Team.findAll({
       where: { tournamentId, bracketId, ...teamWhere },
-      attributes: ["id", "teamName"], // Team basic info
+      attributes: ["id", "teamName", "isComplete", "status"],
       include: [
         {
           model: PoolTeam,
@@ -1884,7 +1884,7 @@ const getTeamsWithPoolAndPlayers = async (req, res) => {
             {
               model: User,
               as: "User",
-              attributes: ["id", "firstname", "lastname", "email"], // Player info
+              attributes: ["id", "firstname", "lastname", "email", "duprRating", "gender"],
             },
           ],
         },
@@ -1896,6 +1896,8 @@ const getTeamsWithPoolAndPlayers = async (req, res) => {
     const result = teams.map((team) => ({
       id: team.id,
       teamName: team.teamName,
+      isComplete: team.isComplete,
+      status: team.status,
       pool:
         team.PoolTeams.length > 0
           ? {
@@ -1903,7 +1905,7 @@ const getTeamsWithPoolAndPlayers = async (req, res) => {
               poolName: team.PoolTeams[0].Pool.poolName,
             }
           : null,
-      players: team.TeamPlayers.map((tp) => tp.User),
+      players: team.TeamPlayers.map((tp) => tp.User).filter(Boolean),
     }));
 
     return res.status(200).json({

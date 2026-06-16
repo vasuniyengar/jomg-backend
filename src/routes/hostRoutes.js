@@ -46,6 +46,20 @@ router.post(
   teamPlayersController.generateTeams
 );
 
+router.post(
+  "/tournaments/:tournamentId/brackets/:bracketId/create-team",
+  middlewares.authenticate,
+  middlewares.authorizeRole(ORGANIZER_ROLES),
+  teamPlayersController.createTeamFromPlayers
+);
+
+router.patch(
+  "/tournaments/:tournamentId/brackets/:bracketId/teams/:teamId/status",
+  middlewares.authenticate,
+  middlewares.authorizeRole(ORGANIZER_ROLES),
+  teamPlayersController.updateTeamStatus
+);
+
 router.get(
   "/tournaments/:tournamentId/brackets/:bracketId/registered-players",
   middlewares.authenticate,

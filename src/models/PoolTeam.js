@@ -7,10 +7,12 @@ const PoolTeam = sequelize.define(
   {
     poolId: {
       type: DataTypes.INTEGER,
+      primaryKey: true,
       allowNull: false,
     },
     teamId: {
       type: DataTypes.INTEGER,
+      primaryKey: true,
       allowNull: false,
     },
   },
