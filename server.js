@@ -32,6 +32,7 @@ import playerRoutes from "./src/routes/playerRoutes.js";
 import hostRoutes from "./src/routes/hostRoutes.js";
 
 import verifyRoutes from "./src/routes/verifyRoutes.js";
+import playoffRoutes from "./src/routes/playoffRoutes.js";
 
 import playerRegistrationRoutes from "./src/routes/playerRegistrationRoutes.js";
 import roundRobinRouter from "./src/routes/roundRobinRoutes.js";
@@ -57,6 +58,10 @@ const isPrivateLanOrigin = (origin) =>
   /^https?:\/\/(?:192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/.test(
     origin
   );
+  app.use((req, res, next) => {
+  console.log(req.method, req.url);
+  next();
+});
 
 app.use(helmet());
 app.use(
@@ -117,7 +122,7 @@ app.use("/api/bracket", bracketRoutes);
 app.use("/api/events", eventRoutes);
 
 // app.use("/api/players", playerRoutes);
-
+app.use("/api/tournaments", playoffRoutes);
 app.use("/api/players", playerRegistrationRoutes);
 
 app.use("/api/host", hostRoutes);

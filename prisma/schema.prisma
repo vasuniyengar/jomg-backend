@@ -355,8 +355,9 @@ model Match {
   updatedAt    DateTime @updatedAt
   pool         Pool?    @relation(fields: [poolId], references: [id], onDelete: SetNull)
   round        Round    @relation(fields: [roundId], references: [id], onDelete: Cascade)
-  team1        Team     @relation("MatchTeam1", fields: [team1Id], references: [id], onDelete: Restrict)
+  team1        Team    @relation("MatchTeam1", fields: [team1Id], references: [id], onDelete: Restrict)
   team2        Team     @relation("MatchTeam2", fields: [team2Id], references: [id], onDelete: Restrict)
+  
 
   @@map("Matches")
 }
