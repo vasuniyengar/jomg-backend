@@ -32,6 +32,7 @@ import playerRoutes from "./src/routes/playerRoutes.js";
 import hostRoutes from "./src/routes/hostRoutes.js";
 
 import verifyRoutes from "./src/routes/verifyRoutes.js";
+import playoffRoutes from "./src/routes/playoffRoutes.js";
 
 import playerRegistrationRoutes from "./src/routes/playerRegistrationRoutes.js";
 import roundRobinRouter from "./src/routes/roundRobinRoutes.js";
@@ -118,6 +119,7 @@ app.use("/api/events", eventRoutes);
 
 // app.use("/api/players", playerRoutes);
 
+app.use("/api/tournaments", playoffRoutes);
 app.use("/api/players", playerRegistrationRoutes);
 
 app.use("/api/host", hostRoutes);
