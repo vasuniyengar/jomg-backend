@@ -18,9 +18,11 @@ import {
 import { pushPlayRulesToDivisions } from "../utils/pushPlayRulesToDivisions.js";
 import { pushPricingToDivisions } from "../utils/pushPricingToDivisions.js";
 
-// import s3Client from "../config/s3Client.js";
-
-// import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import {
+  uploadTournamentImage,
+  deleteTournamentImage,
+  extractMediaKey,
+} from "../services/tournamentMediaService.js";
 
 // import { SendMessageCommand } from "@aws-sdk/client-sqs";
 
@@ -694,7 +696,22 @@ const updatingTournamentById = async (req, res) => {
       }
     }
 
-    if (updatePayload.name && updatePayload.name !== tournament.name) {
+    if (updatePayload.slug !== undefined && updatePayload.slug !== tournament.slug) {
+      const nextSlug = resolveSlug(tournament.name, updatePayload.slug);
+      const taken = await Tournament.findOne({
+        where: { slug: nextSlug, id: { [Op.ne]: tournament.id } },
+        transaction: t,
+      });
+      if (taken) {
+        await t.rollback();
+        return res.status(400).json({
+          error: true,
+          code: 400,
+          message: "Tournament URL slug is already in use",
+        });
+      }
+      updatePayload.slug = nextSlug;
+    } else if (updatePayload.name && updatePayload.name !== tournament.name) {
       updatePayload.slug = slugify(updatePayload.name, {
         locale: "en",
         lower: true,
@@ -1230,6 +1247,65 @@ const invitePlayers = async (req, res) => {
 //   }
 // };
 
+const uploadTournamentMedia = async (req, res) => {
+  try {
+    const { tournamentId } = req.params;
+    const purpose = String(req.query.purpose || req.body?.purpose || "media").trim();
+
+    if (!req.file) {
+      return res.status(400).json({
+        error: true,
+        code: 400,
+        message: "No file uploaded",
+      });
+    }
+
+    const tournament = await Tournament.findOne({
+      where: { id: tournamentId, hostId: req.user.id },
+    });
+
+    if (!tournament) {
+      return res.status(404).json({
+        error: true,
+        code: 404,
+        message: "Tournament not found or access denied",
+      });
+    }
+
+    const folderPurpose =
+      purpose === "banner" ? "banner" : purpose === "sponsor-logo" ? "sponsors" : purpose;
+
+    const result = await uploadTournamentImage({
+      tournamentId,
+      buffer: req.file.buffer,
+      mimeType: req.file.mimetype,
+      purpose: folderPurpose,
+    });
+
+    if (purpose === "banner") {
+      const oldKey = extractMediaKey(tournament.getDataValue("tournamentTumbnail"));
+      if (oldKey && oldKey !== result.key) {
+        await deleteTournamentImage(oldKey);
+      }
+      await tournament.update({ tournamentTumbnail: result.key });
+    }
+
+    return res.status(201).json({
+      error: false,
+      code: 201,
+      message: "Media uploaded",
+      data: result,
+    });
+  } catch (error) {
+    const status = error.status || 500;
+    return res.status(status).json({
+      error: true,
+      code: status,
+      message: error.message || "Upload failed",
+    });
+  }
+};
+
 export default {
   createTournament,
   getAllTournamentsOfHost,
@@ -1244,4 +1320,5 @@ export default {
   patchTournamentStatus,
   pushTournamentSettings,
   invitePlayers,
+  uploadTournamentMedia,
 };

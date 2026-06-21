@@ -9,6 +9,7 @@ import bracketController from "../controllers/bracketController.js";
 import divisionController from "../controllers/divisionController.js";
 
 import upload from "../middlewares/upload.js";
+import mediaUpload from "../middlewares/mediaUpload.js";
 
 import tournamentValidations from "../validations/tournamentSchema.js";
 
@@ -21,6 +22,14 @@ const bracketUpload = multer();
 const ORGANIZER_ROLES = ["organizer", "super_admin", "host"];
 
 const router = express.Router();
+
+router.post(
+  "/:tournamentId/media",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  mediaUpload.single("file"),
+  tournamentControllers.uploadTournamentMedia
+);
 
 //tournament creating route
 router.post(
@@ -101,6 +110,14 @@ router.get(
 );
 
 router.patch(
+  "/:tournamentId/status",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  tournamentValidations.statusPatchValidation,
+  tournamentControllers.patchTournamentStatus
+);
+
+router.post(
   "/:tournamentId/status",
   middleware.authenticate,
   middleware.authorizeRole(ORGANIZER_ROLES),

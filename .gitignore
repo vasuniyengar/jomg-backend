@@ -11,4 +11,4 @@ logs/
 
 # Ignore build artifacts
 dist/
-build/
+uploads/

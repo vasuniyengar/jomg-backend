@@ -1,6 +1,7 @@
 /**
  * Hub list status mapping (UI) vs DB tournament.status
  */
+import { mergeSponsorsConfig } from "./sponsorSettings.js";
 export function computeHubStatus(tournament) {
   const status = tournament?.status;
   if (status === "draft") return "draft";
@@ -99,7 +100,7 @@ export function parseTournamentSettings(organizerInfo) {
       spectators: { ticketFee: 0, maxCapacity: "" },
       duprRequirementsText: "",
       duprRequirementsManual: false,
-      sponsors: [],
+      sponsors: mergeSponsorsConfig(null),
       organizerOverride: false,
     },
   };
@@ -132,6 +133,7 @@ export function parseTournamentSettings(organizerInfo) {
           ...tournamentInfoDefaults.spectators,
           ...(parsedTournamentInfo.spectators || {}),
         },
+        sponsors: mergeSponsorsConfig(parsedTournamentInfo.sponsors),
       },
     },
   };

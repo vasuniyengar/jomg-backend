@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import process from "node:process";
+import path from "node:path";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -36,6 +37,7 @@ import playoffRoutes from "./src/routes/playoffRoutes.js";
 
 import playerRegistrationRoutes from "./src/routes/playerRegistrationRoutes.js";
 import roundRobinRouter from "./src/routes/roundRobinRoutes.js";
+import publicTournamentRoutes from "./src/routes/publicTournamentRoutes.js";
 
 
 
@@ -110,6 +112,10 @@ app.use("/api/round-robin", roundRobinRouter);
 app.use("/api/clubs", clubRoutes);
 
 app.use("/api/tournaments", tournamentRoutes);
+
+app.use("/api/public/tournaments", publicTournamentRoutes);
+
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 // app.use("/uploads", express.static("uploads"));
 

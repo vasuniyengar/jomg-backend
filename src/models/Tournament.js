@@ -1,4 +1,5 @@
 import sequelize from "../config/database.js";
+import { resolveMediaUrl, extractMediaKey } from "../services/tournamentMediaService.js";
 
 import { DataTypes } from "sequelize";
 
@@ -30,16 +31,8 @@ const Tournament = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
       get() {
-        const S3_BASE_URL =
-          process.env.AWS_S3_BASE_URL ||
-          "https://s3.us-east-1.amazonaws.com/pb-images-storage/";
-
         const rawValue = this.getDataValue("tournamentTumbnail");
-
-        if (rawValue && S3_BASE_URL) {
-          return `${S3_BASE_URL.replace(/\/$/, "")}/${rawValue}`;
-        }
-        return null;
+        return resolveMediaUrl(rawValue);
       },
       set(value) {
         if (!value) {
@@ -47,15 +40,7 @@ const Tournament = sequelize.define(
           return;
         }
 
-        const BASE_URL =
-          process.env.AWS_S3_BASE_URL ||
-          "https://s3.us-east-1.amazonaws.com/pb-images-storage/";
-        let keyToStore = value;
-
-        if (typeof value === "string" && value.startsWith(BASE_URL)) {
-          keyToStore = value.substring(BASE_URL.length);
-        }
-        this.setDataValue("tournamentTumbnail", keyToStore);
+        this.setDataValue("tournamentTumbnail", extractMediaKey(value));
       },
     },
     venue: {

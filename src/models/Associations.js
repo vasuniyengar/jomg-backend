@@ -130,10 +130,10 @@ Pool.hasMany(Round, { foreignKey: "poolId" });
 Round.hasMany(Match, { foreignKey: "roundId" });
 Match.belongsTo(Round, { foreignKey: "roundId" });
 
-PoolTeamStats.belongsTo(Team, { foreignKey: "teamId" });
+PoolTeamStats.belongsTo(Team, { foreignKey: "teamId", as: "Team" });
 PoolTeamStats.belongsTo(Pool, { foreignKey: "poolId" });
 
-Team.hasOne(PoolTeamStats, { foreignKey: "teamId" });
+Team.hasOne(PoolTeamStats, { foreignKey: "teamId", as: "PoolTeamStat" });
 Pool.hasMany(PoolTeamStats, { foreignKey: "poolId" });
 
 User.belongsTo(Role, { foreignKey: "roleId", as: "role" });
