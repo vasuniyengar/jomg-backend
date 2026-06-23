@@ -328,7 +328,7 @@ export async function buildPublicTournamentPage(slug, { preview = false } = {}) 
   const tournament = await Tournament.findOne({
     where: { slug },
     include: [
-      { model: User, attributes: ["id", "firstname", "lastname"] },
+      { model: User, attributes: ["id", "firstname", "lastname", "email", "phoneNumber"] },
       { model: Bracket, include: [{ model: Event }] },
     ],
   });
@@ -350,6 +350,8 @@ export async function buildPublicTournamentPage(slug, { preview = false } = {}) 
 
   const host = tournament.User;
   const organizerName = organizer.name || `${host?.firstname || ""} ${host?.lastname || ""}`.trim();
+  const organizerEmail = organizer.email || host?.email || "";
+  const organizerPhone = organizer.phone || host?.phoneNumber || "";
 
   const rawThumb = tournament.getDataValue("tournamentTumbnail");
   const bannerUrl = resolveMediaUrl(rawThumb);
@@ -375,8 +377,9 @@ export async function buildPublicTournamentPage(slug, { preview = false } = {}) 
       initials: initials(organizerName.split(" ")[0], organizerName.split(" ").slice(1).join(" ")),
       name: organizerName,
       role: "Tournament Director",
-      phone: organizer.phone || "",
-      phoneHref: organizer.phone ? `tel:${organizer.phone.replace(/\D/g, "")}` : "",
+      email: organizerEmail,
+      phone: organizerPhone,
+      phoneHref: organizerPhone ? `tel:${organizerPhone.replace(/\D/g, "")}` : "",
     },
     infoBar: buildInfoBar(tournament, publicBrackets, clubCount),
     tabs: {
