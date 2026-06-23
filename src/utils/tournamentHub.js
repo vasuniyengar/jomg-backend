@@ -53,6 +53,45 @@ export function parseOrganizerInfo(value) {
   }
 }
 
+export const DEFAULT_PLAYER_INSTRUCTIONS = [
+  {
+    label: "Stay & Travel",
+    text: "Hampton Inn Austin (tournament rate code: APBO25).",
+  },
+  {
+    label: "On-Site Food",
+    text: "Food trucks on-site 8am–4pm. Water stations at every court.",
+  },
+  {
+    label: "Parking & Arrival",
+    text: "Free parking on-site. Shuttle available from Hampton Inn every 30 min.",
+  },
+  {
+    label: "What to Bring",
+    text: "Own paddle required. Tournament balls provided. Court-appropriate shoes mandatory.",
+  },
+  {
+    label: "Waiver / Liability",
+    text: "By registering, players agree to the Austin Pickleball Club liability waiver and release of claims.",
+  },
+];
+
+function mergePlayerInstructions(saved) {
+  if (!Array.isArray(saved) || !saved.length) {
+    return DEFAULT_PLAYER_INSTRUCTIONS.map((block) => ({ ...block }));
+  }
+  return DEFAULT_PLAYER_INSTRUCTIONS.map((defaultBlock, index) => {
+    const savedBlock = saved[index];
+    if (savedBlock && typeof savedBlock === "object") {
+      return {
+        label: defaultBlock.label,
+        text: String(savedBlock.text ?? defaultBlock.text),
+      };
+    }
+    return { ...defaultBlock };
+  });
+}
+
 /** Merged tournament settings from organizerInfo JSON (UI defaults for missing keys). */
 export function parseTournamentSettings(organizerInfo) {
   const parsed = parseOrganizerInfo(organizerInfo);
@@ -61,6 +100,7 @@ export function parseTournamentSettings(organizerInfo) {
     numCourts: 8,
     playEnv: "Outdoor Open",
     netSetup: "Permanent",
+    courtDescription: "",
     officialBall: "",
     officialBallUrl: "",
     paymentPhone: "",
@@ -100,6 +140,7 @@ export function parseTournamentSettings(organizerInfo) {
       spectators: { ticketFee: 0, maxCapacity: "" },
       duprRequirementsText: "",
       duprRequirementsManual: false,
+      playerInstructions: DEFAULT_PLAYER_INSTRUCTIONS.map((block) => ({ ...block })),
       sponsors: mergeSponsorsConfig(null),
       organizerOverride: false,
     },
@@ -133,6 +174,9 @@ export function parseTournamentSettings(organizerInfo) {
           ...tournamentInfoDefaults.spectators,
           ...(parsedTournamentInfo.spectators || {}),
         },
+        playerInstructions: mergePlayerInstructions(
+          parsedTournamentInfo.playerInstructions
+        ),
         sponsors: mergeSponsorsConfig(parsedTournamentInfo.sponsors),
       },
     },

@@ -3,6 +3,7 @@ import sequelize from "../config/database.js";
 import models from "../models/Associations.js";
 import { parseScoringConfig } from "../utils/scoringRules.js";
 import {
+  DEFAULT_PLAYER_INSTRUCTIONS,
   parseTournamentSettings,
 } from "../utils/tournamentHub.js";
 import { mapSponsorsForPublic } from "../utils/sponsorSettings.js";
@@ -379,17 +380,21 @@ export async function buildPublicTournamentPage(slug, { preview = false } = {}) 
     },
     infoBar: buildInfoBar(tournament, publicBrackets, clubCount),
     tabs: {
+      details: {
+        courtDescription: settings.courtDescription || "",
+        officialBall: settings.officialBall || "",
+        officialBallUrl: settings.officialBallUrl || "",
+        instructions:
+          settings.tournamentInfo?.playerInstructions || DEFAULT_PLAYER_INSTRUCTIONS,
+        duprPolicyText: settings.tournamentInfo?.duprRequirementsText || "",
+      },
       format: mapPlayRulesToFormat(settings.playRules),
       refund: {
         title: "WHAT IF I CAN'T MAKE IT?",
         blocks: [
           { label: "Full Refund Window", text: refund.fullWindow || "" },
           { label: "Replacement Players", text: refund.replacement || "" },
-          {
-            label: "Questions",
-            text: refund.questions || "",
-            email: "info@jomgpickleball.com",
-          },
+          { label: "Questions", text: refund.questions || "" },
         ],
       },
       sponsors: mapSponsorsForPublic(settings.tournamentInfo?.sponsors),
