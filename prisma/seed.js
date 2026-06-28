@@ -13,7 +13,7 @@ async function seedRoles() {
 }
 
 async function seedFormats() {
-  const formats = ["Double's", "Single's", "Mlp", "Triples"];
+  const formats = ["Double's", "Single's", "MLP", "Triples"];
   for (const name of formats) {
     await prisma.format.upsert({
       where: { name },
@@ -24,7 +24,7 @@ async function seedFormats() {
 }
 
 async function seedGroups() {
-  const groups = ["Men's", "Women's", "Mixed", "Boys", "Girls", "Junior"];
+  const groups = ["Men's", "Women's", "Mixed", "Boys", "Girls", "Junior","Co-Ed"];
   for (const name of groups) {
     await prisma.group.upsert({
       where: { name },

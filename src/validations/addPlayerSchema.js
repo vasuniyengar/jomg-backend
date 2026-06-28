@@ -19,6 +19,7 @@ const addPlayerFields = Joi.object({
   email: Joi.string().email().required(),
   partner: Joi.string().allow("", null).optional(),
   duprRating: Joi.number().min(0).max(8).precision(2).optional(),
+  duprId: Joi.string().allow("", null).optional(),
   paymentStatus: Joi.string().valid("paid", "unpaid", "refunded").optional(),
   sendPaymentEmail: Joi.boolean().optional(),
 });
