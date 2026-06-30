@@ -14,6 +14,7 @@ import {
   parseTournamentSettings,
   canTransitionStatus,
   displayStatusLabel,
+  canStartTournamentLive,
 } from "../utils/tournamentHub.js";
 import { pushPlayRulesToDivisions } from "../utils/pushPlayRulesToDivisions.js";
 import { pushPricingToDivisions } from "../utils/pushPricingToDivisions.js";
@@ -432,7 +433,15 @@ const getAllTournaments = async (req, res) => {
       order,
     });
 
-    const finalData = tournaments.map((t) => t.toJSON());
+    const finalData = tournaments
+      .map((t) => t.toJSON())
+      .filter((t) => {
+        const { settings } = parseTournamentSettings(t.organizerInfo);
+        const vis = settings?.visibility || {};
+        if (vis.privateOnly) return false;
+        if (vis.publicTournamentPage === false) return false;
+        return true;
+      });
 
     res.status(200).json({
       code: 200,
@@ -512,10 +521,7 @@ const getTournamentById = async (req, res) => {
       where: { id: tournamentId },
       include: [
         { model: User, attributes: ["id", "firstname", "lastname", "email"] },
-        // {
-        //   model: Bracket,
-        //   include: [{ model: Event }, { model: PlayoffSeeding }],
-        // },
+        { model: Club, attributes: ["id", "name"] },
       ],
     });
 
@@ -528,11 +534,14 @@ const getTournamentById = async (req, res) => {
       });
     }
 
+    const plain = tournament.toJSON();
+    plain.clubName = plain.Club?.name || null;
+
     res.status(200).json({
       code: 200,
       error: false,
       message: "tournaments",
-      data: tournament.toJSON(),
+      data: plain,
     });
   } catch (error) {
     res.status(500).json({
@@ -1041,6 +1050,20 @@ const patchTournamentStatus = async (req, res) => {
           error: true,
           message:
             "Confirm tournament settings before publishing.",
+        });
+      }
+    }
+
+    if (nextStatus === "ongoing") {
+      const liveGate = canStartTournamentLive(
+        tournament.startDate,
+        tournament.timezone
+      );
+      if (!liveGate.allowed) {
+        return res.status(400).json({
+          code: 400,
+          error: true,
+          message: liveGate.reason,
         });
       }
     }

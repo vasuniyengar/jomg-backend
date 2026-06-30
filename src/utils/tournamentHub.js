@@ -104,6 +104,8 @@ export function parseTournamentSettings(organizerInfo) {
     officialBall: "",
     officialBallUrl: "",
     paymentPhone: "",
+    zelleUsername: "",
+    venmoUsername: "",
     settingsConfirmed: false,
     settingsConfirmedAt: null,
     sectionPush: { pricing: false, playRules: false, dupr: false },
@@ -207,4 +209,38 @@ export function displayStatusLabel(status) {
     default:
       return status || "Draft";
   }
+}
+
+export function calendarDateString(date, timeZone) {
+  const d = date instanceof Date ? date : new Date(date);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timeZone || undefined,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+export function canStartTournamentLive(startDate, timeZone) {
+  if (!startDate) {
+    return {
+      allowed: false,
+      reason: "Set a tournament start date before going live.",
+    };
+  }
+  const startDay = calendarDateString(startDate, timeZone);
+  const [sy, sm, sd] = startDay.split("-").map(Number);
+  const startUtc = Date.UTC(sy, sm - 1, sd);
+  const earliestUtc = startUtc - 24 * 60 * 60 * 1000;
+  const today = calendarDateString(new Date(), timeZone);
+  const [ty, tm, td] = today.split("-").map(Number);
+  const todayUtc = Date.UTC(ty, tm - 1, td);
+  if (todayUtc < earliestUtc) {
+    return {
+      allowed: false,
+      reason:
+        "Go Live is available starting the calendar day before the tournament start date.",
+    };
+  }
+  return { allowed: true, reason: null };
 }

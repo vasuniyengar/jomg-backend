@@ -19,9 +19,11 @@ import {
   buildPaymentRegistrationJob,
   computeRegistrationAmountDue,
   getPaymentPhone,
+  hasPaymentInstructions,
 } from "../utils/paymentRegistrationEmail.js";
 import { linkBulkUploadPartners } from "../utils/linkRegistrationPartners.js";
 import { parseDuprRating } from "../utils/parseDuprRating.js";
+import { validateMlpTeamRoster } from "../utils/mlpRosterValidation.js";
 
 // const {
 //   Tournament,
@@ -131,6 +133,12 @@ const mergeDivisionScoringConfig = (resolved, input, tournament) => {
     ...(input?.skillLevel !== undefined
       ? { skillLevel: String(input.skillLevel || "").trim() }
       : {}),
+    ...(input?.teamsPerPool !== undefined
+      ? { teamsPerPool: Number(input.teamsPerPool) || 4 }
+      : {}),
+    ...(input?.seedingMethod !== undefined
+      ? { seedingMethod: String(input.seedingMethod || "").trim() }
+      : {}),
   };
 
   if (!useGlobal) {
@@ -138,6 +146,19 @@ const mergeDivisionScoringConfig = (resolved, input, tournament) => {
     if (input?.matchScoring && typeof input.matchScoring === "object") {
       scoringConfig.matchScoring = input.matchScoring;
     }
+  } else if (input?.matchScoring && typeof input.matchScoring === "object") {
+    scoringConfig.matchScoring = {
+      ...(existing.matchScoring || {}),
+      ...input.matchScoring,
+    };
+  }
+
+  if (input?.seedingMethod !== undefined && useGlobal) {
+    scoringConfig.seedingMethod = String(input.seedingMethod || "").trim();
+  }
+
+  if (input?.teamsPerPool !== undefined) {
+    scoringConfig.teamsPerPool = Number(input.teamsPerPool) || 4;
   }
 
   if (scoringConfig.duprRecorded === undefined) {
@@ -633,13 +654,13 @@ export const bulkUploadPlayers = async (req, res) => {
     }
 
     const paymentPhone = getPaymentPhone(tournament);
-    if (sendEmails && !paymentPhone) {
+    if (sendEmails && !hasPaymentInstructions(tournament)) {
       await t.rollback();
       return res.status(400).json({
         code: 400,
         error: true,
         message:
-          "Payment mobile number is required in Tournament Settings before sending registration emails.",
+          "At least one payment method (mobile, Zelle, or Venmo) is required in Tournament Settings before sending registration emails.",
       });
     }
 
@@ -855,6 +876,13 @@ export const bulkUploadPlayers = async (req, res) => {
               },
               transaction: t,
             });
+            if (/mlp/i.test(eventName)) {
+              const mlpErr = await validateMlpTeamRoster(team.id, t);
+              if (mlpErr) {
+                errors.push({ row: rowNum, reason: mlpErr });
+                continue;
+              }
+            }
           }
 
         const fee = Number(bracket.registrationFee || tournament.entryFee || 0);
@@ -955,12 +983,12 @@ export const resendPaymentEmails = async (req, res) => {
 
     const tournament = await assertHostTournament(tournamentId, req.user.id);
     const paymentPhone = getPaymentPhone(tournament);
-    if (!paymentPhone) {
+    if (!hasPaymentInstructions(tournament)) {
       return res.status(400).json({
         code: 400,
         error: true,
         message:
-          "Payment mobile number is required in Tournament Settings before sending registration emails.",
+          "At least one payment method (mobile, Zelle, or Venmo) is required in Tournament Settings before sending registration emails.",
       });
     }
 
@@ -1111,6 +1139,274 @@ const safeRollback = async (transaction) => {
   }
 };
 
+export const updateRegistration = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const tournamentId = Number(req.params.tournamentId);
+    const registrationId = Number(req.params.registrationId);
+    const body = req.body;
+
+    if (!Number.isInteger(tournamentId) || !Number.isInteger(registrationId)) {
+      await safeRollback(t);
+      return res.status(400).json({
+        code: 400,
+        error: true,
+        message: "Invalid tournament or registration id",
+      });
+    }
+
+    const tournament = await assertHostTournament(tournamentId, req.user.id);
+
+    if (["ongoing", "completed"].includes(tournament.status)) {
+      await safeRollback(t);
+      return res.status(400).json({
+        code: 400,
+        error: true,
+        message: "Cannot edit registrations after the tournament has started",
+      });
+    }
+
+    const reg = await PlayerRegistration.findOne({
+      where: { id: registrationId, tournamentId },
+      include: [{ model: User }],
+      transaction: t,
+    });
+    if (!reg) {
+      await safeRollback(t);
+      return res.status(404).json({
+        code: 404,
+        error: true,
+        message: "Registration not found",
+      });
+    }
+
+    const user = reg.User;
+    const {
+      firstname,
+      lastname,
+      email,
+      phoneNumber,
+      age,
+      gender,
+      bracketId: newBracketId,
+      clubName,
+      partner,
+      duprRating,
+      duprId,
+      rosterNumber,
+      playerRole,
+      status,
+      teamId,
+    } = body;
+
+    if (firstname !== undefined) user.firstname = String(firstname).trim();
+    if (lastname !== undefined) user.lastname = String(lastname).trim();
+    if (email !== undefined) user.email = String(email).trim().toLowerCase();
+    if (phoneNumber !== undefined) user.phoneNumber = String(phoneNumber).trim();
+    if (age !== undefined) user.age = Number(age) || user.age;
+    if (gender !== undefined) user.gender = gender;
+    if (duprId !== undefined) user.duprId = String(duprId).trim() || null;
+    if (duprRating !== undefined) {
+      const duprVal = parseDuprRating(duprRating);
+      if (duprVal !== null) user.duprRating = duprVal;
+    }
+    await user.save({ transaction: t });
+
+    if (newBracketId !== undefined && Number(newBracketId) !== reg.bracketId) {
+      const targetBracketId = Number(newBracketId);
+      const bracket = await Bracket.findByPk(targetBracketId, {
+        include: [{ model: Event }],
+        transaction: t,
+      });
+      if (!bracket || bracket.tournamentId !== tournamentId) {
+        await safeRollback(t);
+        return res.status(400).json({
+          code: 400,
+          error: true,
+          message: "Invalid division",
+        });
+      }
+      if (bracket.isPoolStarted) {
+        await safeRollback(t);
+        return res.status(400).json({
+          code: 400,
+          error: true,
+          message: "Cannot move player — division pool play has started",
+        });
+      }
+      const dup = await PlayerRegistration.findOne({
+        where: { playerId: reg.playerId, tournamentId, bracketId: targetBracketId },
+        transaction: t,
+      });
+      if (dup && dup.id !== reg.id) {
+        await safeRollback(t);
+        return res.status(400).json({
+          code: 400,
+          error: true,
+          message: "Player already registered in that division",
+        });
+      }
+      const eventName = bracket.Event?.eventName?.toLowerCase() || "";
+      if (/\bmen\b/.test(eventName) && user.gender?.toLowerCase() !== "male") {
+        await safeRollback(t);
+        return res.status(400).json({
+          code: 400,
+          error: true,
+          message: "Only male players can register for this event",
+        });
+      }
+      if (
+        /\bwomen\b/.test(eventName) &&
+        user.gender?.toLowerCase() !== "female"
+      ) {
+        await safeRollback(t);
+        return res.status(400).json({
+          code: 400,
+          error: true,
+          message: "Only female players can register for this event",
+        });
+      }
+      reg.bracketId = targetBracketId;
+    }
+
+    if (clubName !== undefined) {
+      reg.clubName = String(clubName).trim() || null;
+    }
+    if (rosterNumber !== undefined) {
+      reg.rosterNumber = String(rosterNumber).trim() || null;
+    }
+    if (playerRole !== undefined) {
+      reg.playerRole = String(playerRole).trim().toLowerCase() || null;
+    }
+    if (status !== undefined) reg.status = status;
+
+    await reg.save({ transaction: t });
+
+    if (partner !== undefined) {
+      const partnerRaw = String(partner || "").trim();
+      if (!partnerRaw || partnerRaw === "-") {
+        if (reg.partnerId) {
+          await PlayerRegistration.update(
+            { partnerId: null },
+            {
+              where: {
+                playerId: reg.partnerId,
+                tournamentId,
+                bracketId: reg.bracketId,
+              },
+              transaction: t,
+            }
+          );
+        }
+        reg.partnerId = null;
+        await reg.save({ transaction: t });
+      } else {
+        await linkBulkUploadPartners(
+          [
+            {
+              registrationId: reg.id,
+              playerId: reg.playerId,
+              bracketId: reg.bracketId,
+              email: user.email,
+              name: `${user.firstname} ${user.lastname}`.trim(),
+              row: { partner: partnerRaw },
+            },
+          ],
+          tournamentId,
+          t
+        );
+      }
+    }
+
+    if (teamId !== undefined) {
+      const teamsInBracket = await Team.findAll({
+        where: { tournamentId, bracketId: reg.bracketId },
+        attributes: ["id"],
+        transaction: t,
+      });
+      const teamIds = teamsInBracket.map((tm) => tm.id);
+      if (teamIds.length) {
+        await TeamPlayer.destroy({
+          where: { playerId: reg.playerId, teamId: { [Op.in]: teamIds } },
+          transaction: t,
+        });
+      }
+      const tid = teamId ? Number(teamId) : null;
+      if (tid) {
+        const team = await Team.findOne({
+          where: { id: tid, tournamentId, bracketId: reg.bracketId },
+          transaction: t,
+        });
+        if (!team) {
+          await safeRollback(t);
+          return res.status(400).json({
+            code: 400,
+            error: true,
+            message: "Team not found in this division",
+          });
+        }
+        await TeamPlayer.create(
+          {
+            playerId: reg.playerId,
+            teamId: tid,
+            role: reg.playerRole || "starter",
+          },
+          { transaction: t }
+        );
+        const mlpErr = await validateMlpTeamRoster(tid, t);
+        if (mlpErr) {
+          await safeRollback(t);
+          return res.status(400).json({
+            code: 400,
+            error: true,
+            message: mlpErr,
+          });
+        }
+      }
+    } else if (gender !== undefined) {
+      const teamsInBracket = await Team.findAll({
+        where: { tournamentId, bracketId: reg.bracketId },
+        attributes: ["id"],
+        transaction: t,
+      });
+      const teamIds = teamsInBracket.map((tm) => tm.id);
+      if (teamIds.length) {
+        const assignment = await TeamPlayer.findOne({
+          where: { playerId: reg.playerId, teamId: { [Op.in]: teamIds } },
+          transaction: t,
+        });
+        if (assignment) {
+          const mlpErr = await validateMlpTeamRoster(assignment.teamId, t);
+          if (mlpErr) {
+            await safeRollback(t);
+            return res.status(400).json({
+              code: 400,
+              error: true,
+              message: mlpErr,
+            });
+          }
+        }
+      }
+    }
+
+    await t.commit();
+
+    res.status(200).json({
+      code: 200,
+      error: false,
+      message: "Registration updated",
+      data: { registrationId: reg.id },
+    });
+  } catch (error) {
+    await safeRollback(t);
+    res.status(error.status || 500).json({
+      code: error.status || 500,
+      error: true,
+      message: error.message || "Failed to update registration",
+    });
+  }
+};
+
 export const updateRegistrationPayment = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -1240,6 +1536,7 @@ export default {
   deleteDivision,
   bulkUploadPlayers,
   resendPaymentEmails,
+  updateRegistration,
   updateRegistrationPayment,
   bulkUpdateRegistrationPayments,
 };

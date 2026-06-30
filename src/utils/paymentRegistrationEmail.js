@@ -14,6 +14,27 @@ export function getPaymentPhone(tournamentOrOrganizerInfo) {
   return phone;
 }
 
+export function getPaymentInstructions(tournamentOrOrganizerInfo) {
+  const organizerInfo =
+    tournamentOrOrganizerInfo != null &&
+    typeof tournamentOrOrganizerInfo === "object" &&
+    "organizerInfo" in tournamentOrOrganizerInfo
+      ? tournamentOrOrganizerInfo.organizerInfo
+      : tournamentOrOrganizerInfo;
+  const org = parseOrganizerInfo(organizerInfo);
+  return {
+    paymentPhone: String(org.paymentPhone || org.phone || "").trim(),
+    zelleUsername: String(org.zelleUsername || "").trim(),
+    venmoUsername: String(org.venmoUsername || "").trim(),
+  };
+}
+
+export function hasPaymentInstructions(tournamentOrOrganizerInfo) {
+  const { paymentPhone, zelleUsername, venmoUsername } =
+    getPaymentInstructions(tournamentOrOrganizerInfo);
+  return Boolean(paymentPhone || zelleUsername || venmoUsername);
+}
+
 export function computeRegistrationAmountDue(bracket, tournament) {
   return Number(bracket?.registrationFee ?? tournament?.entryFee ?? 0);
 }
@@ -27,6 +48,7 @@ export function buildPaymentEmailPayload({
   paymentPhone,
 }) {
   const org = parseOrganizerInfo(tournament.organizerInfo);
+  const payment = getPaymentInstructions(tournament.organizerInfo);
   const hostName = hostUser?.firstname
     ? `${hostUser.firstname} ${hostUser.lastname || ""}`.trim()
     : org.name;
@@ -40,7 +62,9 @@ export function buildPaymentEmailPayload({
     startDate: tournament.startDate,
     endDate: tournament.endDate,
     amountDue,
-    paymentPhone,
+    paymentPhone: payment.paymentPhone,
+    zelleUsername: payment.zelleUsername,
+    venmoUsername: payment.venmoUsername,
     organizerName: org.name,
     organizerPhone: org.phone,
   };
@@ -60,6 +84,8 @@ export function buildPaymentRegistrationJob(registrationId, payload) {
     endDate: payload.endDate,
     amountDue: payload.amountDue,
     paymentPhone: payload.paymentPhone,
+    zelleUsername: payload.zelleUsername,
+    venmoUsername: payload.venmoUsername,
     organizerName: payload.organizerName,
     organizerPhone: payload.organizerPhone,
   };

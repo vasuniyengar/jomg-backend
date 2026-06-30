@@ -69,14 +69,14 @@ const tournamentCreateSchema = Joi.object({
   registrationCloseDate: Joi.date()
     .iso()
     .min(Joi.ref("registrationOpenDate"))
-    .less(Joi.ref("startDate"))
+    .max(Joi.ref("endDate"))
     .required()
     .messages({
       "date.base": "Registration close date must be a valid date",
       "date.min":
         "Registration close date must be on or after registration open date",
-      "date.less":
-        "Registration close date must be before the tournament start date",
+      "date.max":
+        "Registration close date must be on or before the tournament end date",
       "any.required": "Registration close date is required",
     }),
   refundDeadline: optionalDateField("Refund deadline"),
