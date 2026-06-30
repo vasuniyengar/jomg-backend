@@ -52,6 +52,15 @@ const registerForBracket = async (req, res) => {
       });
     }
 
+    if (tournament.status !== "active") {
+      return res.status(400).json({
+        error: true,
+        code: 400,
+        message:
+          "Registration is not open. This tournament has not been published yet.",
+      });
+    }
+
     const bracket = await Bracket.findByPk(bracketId, {
       include: [{ model: Event }],
     });

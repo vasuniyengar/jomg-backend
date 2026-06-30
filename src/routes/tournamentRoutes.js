@@ -183,6 +183,14 @@ router.patch(
 );
 
 router.patch(
+  "/:tournamentId/registrations/:registrationId",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  divisionValidations.validateRegistrationPatch,
+  divisionController.updateRegistration
+);
+
+router.patch(
   "/:tournamentId/registrations/:registrationId/payment",
   middleware.authenticate,
   middleware.authorizeRole(ORGANIZER_ROLES),

@@ -12,7 +12,9 @@ import {
   buildPaymentRegistrationJob,
   computeRegistrationAmountDue,
   getPaymentPhone,
+  hasPaymentInstructions,
 } from "../utils/paymentRegistrationEmail.js";
+import { validateMlpTeamRoster } from "../utils/mlpRosterValidation.js";
 
 const {
   PlayerRegistration,
@@ -31,6 +33,7 @@ const {
   TeamPlayer,
   UserRole,
   Role,
+  Club,
 } = models;
 
 const addPlayerByHost = async (req, res) => {
@@ -52,6 +55,8 @@ const addPlayerByHost = async (req, res) => {
       paymentStatus: paymentStatusInput,
       sendPaymentEmail = false,
       duprRating: duprRatingInput,
+      clubName: clubNameInput,
+      teamId: teamIdInput,
     } = body;
 
     const paymentStatus =
@@ -65,6 +70,7 @@ const addPlayerByHost = async (req, res) => {
         hostId,
         id: tournamentId,
       },
+      include: [{ model: Club, attributes: ["name"] }],
       transaction: t,
     });
 
@@ -129,6 +135,9 @@ const addPlayerByHost = async (req, res) => {
         } players`,
       });
     }
+
+    const resolvedClubName =
+      String(clubNameInput || "").trim() || tournament.Club?.name || null;
 
     let player = null;
     let registration = null;
@@ -205,6 +214,7 @@ const addPlayerByHost = async (req, res) => {
           bracketId,
           status: "registered",
           paymentStatus,
+          clubName: resolvedClubName,
         },
         {
           transaction: t,
@@ -285,6 +295,7 @@ const addPlayerByHost = async (req, res) => {
           bracketId,
           status: "registered",
           paymentStatus,
+          clubName: resolvedClubName,
         },
         {
           transaction: t,
@@ -325,9 +336,39 @@ const addPlayerByHost = async (req, res) => {
       );
     }
 
+    if (teamIdInput) {
+      const tid = Number(teamIdInput);
+      const team = await Team.findOne({
+        where: { id: tid, tournamentId, bracketId },
+        transaction: t,
+      });
+      if (!team) {
+        await t.rollback();
+        return res.status(400).json({
+          error: true,
+          code: 400,
+          message: "Team not found in this division",
+        });
+      }
+      await TeamPlayer.findOrCreate({
+        where: { playerId: player.id, teamId: tid },
+        defaults: { role: "starter" },
+        transaction: t,
+      });
+      const mlpErr = await validateMlpTeamRoster(tid, t);
+      if (mlpErr) {
+        await t.rollback();
+        return res.status(400).json({
+          error: true,
+          code: 400,
+          message: mlpErr,
+        });
+      }
+    }
+
     if (paymentStatus === "unpaid" && sendPaymentEmail) {
       const paymentPhone = getPaymentPhone(tournament);
-      if (!paymentPhone) {
+      if (!hasPaymentInstructions(tournament)) {
         await t.rollback();
         return res.status(400).json({
           error: true,

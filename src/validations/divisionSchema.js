@@ -68,9 +68,38 @@ export const validateBulkPaymentPatch = (req, res, next) => {
   next();
 };
 
+const registrationPatchSchema = Joi.object({
+  firstname: Joi.string().trim().min(2).max(80).optional(),
+  lastname: Joi.string().trim().min(2).max(80).optional(),
+  email: Joi.string().email().optional(),
+  phoneNumber: Joi.string().trim().optional(),
+  age: Joi.number().integer().min(18).max(120).optional(),
+  gender: Joi.string().valid("male", "female").optional(),
+  bracketId: Joi.number().integer().positive().optional(),
+  clubName: Joi.string().max(120).allow("", null).optional(),
+  partner: Joi.string().max(120).allow("", null).optional(),
+  duprRating: Joi.alternatives().try(Joi.number(), Joi.string()).optional(),
+  duprId: Joi.string().max(64).allow("", null).optional(),
+  rosterNumber: Joi.string().max(32).allow("", null).optional(),
+  playerRole: Joi.string().max(32).allow("", null).optional(),
+  status: Joi.string()
+    .valid("registered", "completed", "withdraw", "not_registered")
+    .optional(),
+  teamId: Joi.number().integer().positive().allow(null).optional(),
+}).min(1);
+
+export const validateRegistrationPatch = (req, res, next) => {
+  const { error } = registrationPatchSchema.validate(req.body, { abortEarly: true });
+  if (error) {
+    return res.status(400).json({ code: 400, error: true, message: error.details[0].message });
+  }
+  next();
+};
+
 export default {
   validateCreateDivision,
   validateUpdateDivision,
   validatePaymentPatch,
   validateBulkPaymentPatch,
+  validateRegistrationPatch,
 };

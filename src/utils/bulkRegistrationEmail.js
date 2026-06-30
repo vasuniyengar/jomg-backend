@@ -20,6 +20,8 @@ export function buildPaymentRegistrationMailContent({
   endDate,
   amountDue,
   paymentPhone,
+  zelleUsername,
+  venmoUsername,
   organizerName,
   organizerPhone,
 }) {
@@ -33,7 +35,28 @@ export function buildPaymentRegistrationMailContent({
     start && end ? `${start} – ${end}` : start || end || "See tournament page";
 
   const amountFormatted = Number(amountDue || 0).toFixed(2);
-  const payPhone = paymentPhone || organizerPhone || "Contact the organizer";
+  const payPhone = paymentPhone || organizerPhone || "";
+  const tableData = [
+    {
+      Item: "Total amount to pay",
+      Details: `$${amountFormatted}`,
+    },
+  ];
+  if (payPhone) {
+    tableData.push({ Item: "Pay via mobile", Details: payPhone });
+  }
+  if (zelleUsername) {
+    tableData.push({ Item: "Zelle", Details: zelleUsername });
+  }
+  if (venmoUsername) {
+    tableData.push({ Item: "Venmo", Details: venmoUsername });
+  }
+  if (tableData.length === 1) {
+    tableData.push({
+      Item: "Payment",
+      Details: "Contact the organizer",
+    });
+  }
 
   const emailContent = {
     body: {
@@ -44,16 +67,7 @@ export function buildPaymentRegistrationMailContent({
         `**Dates:** ${datesLine}`,
       ],
       table: {
-        data: [
-          {
-            Item: "Total amount to pay",
-            Details: `$${amountFormatted}`,
-          },
-          {
-            Item: "Pay via mobile",
-            Details: payPhone,
-          },
-        ],
+        data: tableData,
         columns: {
           customWidth: {
             Item: "35%",
@@ -62,7 +76,7 @@ export function buildPaymentRegistrationMailContent({
         },
       },
       outro: [
-        "Please complete payment using the mobile number above to confirm your spot.",
+        "Please complete payment using the instructions above to confirm your spot.",
         organizerName
           ? `Questions? Contact ${organizerName}${organizerPhone ? ` at ${organizerPhone}` : ""}.`
           : "Contact the tournament organizer if you have questions.",
