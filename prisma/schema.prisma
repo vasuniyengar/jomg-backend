@@ -203,6 +203,7 @@ model Bracket {
   poolStarted     Boolean              @default(false)
   status          String               @default("draft")
   startDate       DateTime             @db.Date
+  startTime       String?              @db.VarChar(8)
   endDate         DateTime             @db.Date
   registrationFee Decimal              @default(0) @db.Decimal(10, 2)
   scoringConfig   Json?

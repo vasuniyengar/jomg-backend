@@ -12,6 +12,10 @@ const divisionBodySchema = Joi.object({
   minRating: Joi.number().min(0).max(8).precision(2).optional(),
   maxRating: Joi.number().min(0).max(8).precision(2).optional(),
   startDate: Joi.string().allow("", null).optional(),
+  startTime: Joi.string()
+    .pattern(/^([01]?\d|2[0-3]):[0-5]\d$/)
+    .allow("", null)
+    .optional(),
   endDate: Joi.string().allow("", null).optional(),
   status: Joi.string().valid("draft", "active", "ongoing", "completed").optional(),
   scoringConfig: Joi.object({

@@ -24,7 +24,7 @@ const {
   User,
 } = models;
 
-const BADGE = "CLUB PLAYERS ONLY";
+const BADGE = "CLUB VS CLUB";
 
 function initials(first, last) {
   return `${(first?.[0] || "").toUpperCase()}${(last?.[0] || "").toUpperCase()}`;
@@ -42,11 +42,35 @@ function formatShortDate(dateStr) {
   return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 }
 
-function formatTime(dateValue) {
-  if (!dateValue) return "TBD";
-  const d = new Date(dateValue);
-  if (Number.isNaN(d.getTime())) return "TBD";
+function formatStartTime(timeValue) {
+  if (!timeValue) return "TBD";
+  const raw = String(timeValue).trim();
+  const match = raw.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return raw;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return raw;
+  const d = new Date();
+  d.setHours(hours, minutes, 0, 0);
   return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
+function startTimeSortKey(timeValue) {
+  if (!timeValue) return "99:99";
+  const raw = String(timeValue).trim();
+  const match = raw.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return raw;
+  return `${match[1].padStart(2, "0")}:${match[2]}`;
+}
+
+function sortBracketsByStartTime(brackets) {
+  return [...brackets].sort((a, b) => {
+    const timeCmp = startTimeSortKey(a.startTime).localeCompare(
+      startTimeSortKey(b.startTime)
+    );
+    if (timeCmp !== 0) return timeCmp;
+    return String(a.name || "").localeCompare(String(b.name || ""));
+  });
 }
 
 function buildDivisionLabel(bracket) {
@@ -225,7 +249,7 @@ async function mapDivisionSummary(bracket, tournament, settings) {
 
   return {
     id: String(bracket.id),
-    time: formatTime(bracket.startDate),
+    time: formatStartTime(bracket.startTime),
     name: buildDivisionLabel(bracket),
     sub: buildDivisionSub(bracket),
     teamCount,
@@ -311,8 +335,9 @@ function groupDivisionsByDay(brackets, tournament, settings) {
 
   return Promise.all(
     [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b)).map(async ([dateKey, dayBrackets]) => {
+      const sortedBrackets = sortBracketsByStartTime(dayBrackets);
       const divisions = await Promise.all(
-        dayBrackets.map((b) => mapDivisionSummary(b, tournament, settings))
+        sortedBrackets.map((b) => mapDivisionSummary(b, tournament, settings))
       );
       return {
         id: dateKey,
@@ -620,7 +645,7 @@ export async function buildPublicDivisionDetail(slug, bracketId, { preview = fal
 
   return {
     title: buildDivisionLabel(bracket),
-    subtitle: `${teams.length} teams · ${playerCount} players · ${formatTime(bracket.startDate)}`,
+    subtitle: `${teams.length} teams · ${playerCount} players · ${formatStartTime(bracket.startTime)}`,
     overview: {
       cards: [
         { label: "Format", value: bracket.BracketFormat?.name || "Round Robin" },

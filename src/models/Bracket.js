@@ -90,6 +90,10 @@ const Bracket = sequelize.define(
       type: DataTypes.DATEONLY,
       allowNull: false,
     },
+    startTime: {
+      type: DataTypes.STRING(8),
+      allowNull: true,
+    },
     endDate: {
       type: DataTypes.DATEONLY,
       allowNull: false,
