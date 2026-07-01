@@ -402,6 +402,7 @@ export const createDivision = async (req, res) => {
       maxRating = 0,
       startDate,
       endDate,
+      startTime,
       status = "draft",
     } = req.body;
 
@@ -443,6 +444,7 @@ export const createDivision = async (req, res) => {
         status,
         startDate: startDate || tournament.startDate,
         endDate: endDate || tournament.endDate,
+        startTime: startTime || null,
         registrationFee: registrationFee ?? tournament.entryFee ?? 0,
         playoffSeedingId,
         ...scoringResolved,
@@ -516,6 +518,7 @@ export const updateDivision = async (req, res) => {
       maxRating,
       startDate,
       endDate,
+      startTime,
       status,
     } = req.body;
 
@@ -548,6 +551,7 @@ export const updateDivision = async (req, res) => {
         }),
         ...(startDate !== undefined && { startDate }),
         ...(endDate !== undefined && { endDate }),
+        ...(startTime !== undefined && { startTime: startTime || null }),
         ...(status !== undefined && { status }),
         ...(scoringFields || {}),
       },
