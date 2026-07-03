@@ -54,8 +54,9 @@ const {
   Role,
   UserRole,
   Pool,
-  Team,       
-  TeamPlayer, 
+  Team,
+  TeamPlayer,
+  Club,
 } = models;
 
 const assertHostTournament = async (tournamentId, hostId) => {
@@ -648,6 +649,15 @@ export const bulkUploadPlayers = async (req, res) => {
     const { rows = [], sendEmails = true } = req.body;
     const tournament = await assertHostTournament(tournamentId, req.user.id);
 
+    let defaultClubName = null;
+    if (tournament.clubId) {
+      const club = await Club.findByPk(tournament.clubId, {
+        attributes: ["name"],
+        transaction: t,
+      });
+      defaultClubName = club?.name || null;
+    }
+
     if (!Array.isArray(rows) || !rows.length) {
       await t.rollback();
       return res.status(400).json({
@@ -847,7 +857,9 @@ export const bulkUploadPlayers = async (req, res) => {
             division: String(row.division || "").trim() || null,
             rosterNumber:
               String(row.rosterNumber || row.roster_number || "").trim() || null,
-            clubName: String(row.clubName || row.club_name || "").trim() || null,
+            clubName:
+              String(row.clubName || row.club_name || "").trim() ||
+              defaultClubName,
           },
           { transaction: t }
         );

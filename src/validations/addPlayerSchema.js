@@ -20,6 +20,8 @@ const addPlayerFields = Joi.object({
   partner: Joi.string().allow("", null).optional(),
   duprRating: Joi.number().min(0).max(8).precision(2).optional(),
   duprId: Joi.string().allow("", null).optional(),
+  clubName: Joi.string().max(120).allow("", null).optional(),
+  teamId: Joi.number().integer().positive().allow(null).optional(),
   paymentStatus: Joi.string().valid("paid", "unpaid", "refunded").optional(),
   sendPaymentEmail: Joi.boolean().optional(),
 });
