@@ -1004,6 +1004,10 @@ const getTournamentDashboard = async (req, res) => {
         },
         brackets,
         checklist,
+        visibility: settings.visibility || {
+          publicTournamentPage: true,
+          privateOnly: false,
+        },
       },
     });
   } catch (error) {

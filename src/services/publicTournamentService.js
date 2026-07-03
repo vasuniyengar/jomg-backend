@@ -4,6 +4,7 @@ import models from "../models/Associations.js";
 import { parseScoringConfig } from "../utils/scoringRules.js";
 import {
   DEFAULT_PLAYER_INSTRUCTIONS,
+  DEFAULT_PADDLE_POLICY_TEXT,
   parseTournamentSettings,
 } from "../utils/tournamentHub.js";
 import { mapSponsorsForPublic } from "../utils/sponsorSettings.js";
@@ -414,6 +415,10 @@ export async function buildPublicTournamentPage(slug, { preview = false } = {}) 
         officialBallUrl: settings.officialBallUrl || "",
         instructions:
           settings.tournamentInfo?.playerInstructions || DEFAULT_PLAYER_INSTRUCTIONS,
+        paddlePolicyText: (() => {
+          const raw = String(settings.paddlePolicyText || "");
+          return raw.trim() ? raw : DEFAULT_PADDLE_POLICY_TEXT;
+        })(),
         duprPolicyText: settings.tournamentInfo?.duprRequirementsText || "",
       },
       format: mapPlayRulesToFormat(settings.playRules),
