@@ -1575,6 +1575,7 @@ const getPoolsWithTeams = async (req, res) => {
                 },
                 {
                   model: PoolTeamStats,
+                  as: "PoolTeamStat",
                   attributes: [
                     "wins",
                     "losses",
