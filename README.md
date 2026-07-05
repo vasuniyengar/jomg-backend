@@ -62,7 +62,34 @@ npm run prisma:migrate:deploy
 npm run prisma:seed
 ```
 
-## 6) Start backend API
+## 6) Email queue (async mail)
+
+Registration and payment emails are sent via **AWS SQS** so the API returns immediately.
+
+Add to `.env`:
+
+- `EMAIL_QUEUE_URL` — SQS queue URL
+- `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
+- `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USER`, `EMAIL_PASS` — SMTP for the worker
+
+Run the API and email worker together (recommended for local dev):
+
+```bash
+npm run dev
+```
+
+Or in two terminals:
+
+```bash
+npm start
+npm run worker:email
+```
+
+Without the worker running, messages stay in the queue until `npm run worker:email` is started.
+
+## 7) Start backend API
+
+If you are not using `npm run dev`, start the API only:
 
 ```bash
 npm start
@@ -73,7 +100,7 @@ Expected log output includes:
 - `database connected`
 - `Server is running on port <PORT>`
 
-## 7) Create or verify login users
+## 8) Create or verify login users
 
 ### Option A: Use seeded users
 
@@ -84,8 +111,10 @@ Seed script creates default auth users:
 
 Passwords come from seed defaults or env values used by `prisma/seed.js`.
 
+After seeding, the organizer account also gets sample clubs (e.g. **Austin Pickleball Club**) for tournament create/list flows.
 
-## 8) API smoke checks
+
+## 9) API smoke checks
 
 Health check:
 

@@ -29,12 +29,12 @@ const Bracket = sequelize.define(
       defaultValue: 0,
     },
     minRating: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.DECIMAL(4, 2),
       allowNull: false,
       defaultValue: 0,
     },
     maxRating: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.DECIMAL(4, 2),
       allowNull: false,
       defaultValue: 0,
     },
@@ -90,6 +90,10 @@ const Bracket = sequelize.define(
       type: DataTypes.DATEONLY,
       allowNull: false,
     },
+    startTime: {
+      type: DataTypes.STRING(8),
+      allowNull: true,
+    },
     endDate: {
       type: DataTypes.DATEONLY,
       allowNull: false,
@@ -98,6 +102,10 @@ const Bracket = sequelize.define(
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
       defaultValue: 0.0,
+    },
+    scoringConfig: {
+      type: DataTypes.JSONB,
+      allowNull: true,
     },
   },
   {

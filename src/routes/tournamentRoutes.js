@@ -6,11 +6,15 @@ import tournamentControllers from "../controllers/tournamentController.js";
 
 import bracketController from "../controllers/bracketController.js";
 
+import divisionController from "../controllers/divisionController.js";
+
 import upload from "../middlewares/upload.js";
+import mediaUpload from "../middlewares/mediaUpload.js";
 
 import tournamentValidations from "../validations/tournamentSchema.js";
 
 import bracketValidations from "../validations/bracketSchema.js";
+import divisionValidations from "../validations/divisionSchema.js";
 
 import multer from "multer";
 
@@ -18,6 +22,14 @@ const bracketUpload = multer();
 const ORGANIZER_ROLES = ["organizer", "super_admin", "host"];
 
 const router = express.Router();
+
+router.post(
+  "/:tournamentId/media",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  mediaUpload.single("file"),
+  tournamentControllers.uploadTournamentMedia
+);
 
 //tournament creating route
 router.post(
@@ -46,12 +58,26 @@ router.put(
   tournamentControllers.updatingTournamentById
 );
 
+router.delete(
+  "/:tournamentId",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  tournamentControllers.deleteTournamentById
+);
+
 //tournament of host getting
 router.get(
   "/host",
   middleware.authenticate,
   middleware.authorizeRole(ORGANIZER_ROLES),
   tournamentControllers.getAllTournamentsOfHost
+);
+
+router.get(
+  "/bracket-meta",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  divisionController.getBracketMeta
 );
 
 router.get("/active", tournamentControllers.getAllTournamentsOfStatusActive);
@@ -76,6 +102,37 @@ router.put(
   bracketController.updatingBracket
 );
 
+router.get(
+  "/:tournamentId/dashboard",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  tournamentControllers.getTournamentDashboard
+);
+
+router.patch(
+  "/:tournamentId/status",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  tournamentValidations.statusPatchValidation,
+  tournamentControllers.patchTournamentStatus
+);
+
+router.post(
+  "/:tournamentId/status",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  tournamentValidations.statusPatchValidation,
+  tournamentControllers.patchTournamentStatus
+);
+
+router.post(
+  "/:tournamentId/settings/push",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  tournamentValidations.settingsPushValidation,
+  tournamentControllers.pushTournamentSettings
+);
+
 router.get("/:tournamentId", tournamentControllers.getTournamentById);
 
 router.get(
@@ -95,6 +152,74 @@ router.post(
 );
 
 router.get(
+  "/:tournamentId/divisions",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  divisionController.listDivisions
+);
+
+router.post(
+  "/:tournamentId/divisions",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  divisionValidations.validateCreateDivision,
+  divisionController.createDivision
+);
+
+router.put(
+  "/:tournamentId/divisions/:bracketId",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  divisionValidations.validateUpdateDivision,
+  divisionController.updateDivision
+);
+
+router.patch(
+  "/:tournamentId/registrations/payment-bulk",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  divisionValidations.validateBulkPaymentPatch,
+  divisionController.bulkUpdateRegistrationPayments
+);
+
+router.patch(
+  "/:tournamentId/registrations/:registrationId",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  divisionValidations.validateRegistrationPatch,
+  divisionController.updateRegistration
+);
+
+router.patch(
+  "/:tournamentId/registrations/:registrationId/payment",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  divisionValidations.validatePaymentPatch,
+  divisionController.updateRegistrationPayment
+);
+
+router.delete(
+  "/:tournamentId/divisions/:bracketId",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  divisionController.deleteDivision
+);
+
+router.post(
+  "/:tournamentId/players/bulk-upload",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  divisionController.bulkUploadPlayers
+);
+
+router.post(
+  "/:tournamentId/players/resend-payment-emails",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  divisionController.resendPaymentEmails
+);
+
+router.get(
   "/:tournamentId/brackets",
   middleware.authenticate,
   middleware.authorizeRole(ORGANIZER_ROLES),
@@ -106,12 +231,5 @@ router.get(
 //   middleware.authenticate,
 //   teamPlayerController.createTeamPlayer
 // );
-
-router.put(
-  "/update/:tournamentId",
-  middleware.authenticate,
-  middleware.authorizeRole(ORGANIZER_ROLES),
-  tournamentControllers.updatingTournamentById
-);
 
 export default router;

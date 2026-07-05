@@ -69,6 +69,15 @@ Bracket.belongsTo(Event, { foreignKey: "eventId" });
 User.hasMany(PlayerRegistration, { foreignKey: "playerId" });
 PlayerRegistration.belongsTo(User, { foreignKey: "playerId" });
 
+User.hasMany(PlayerRegistration, {
+  foreignKey: "partnerId",
+  as: "PartnerRegistrations",
+});
+PlayerRegistration.belongsTo(User, {
+  foreignKey: "partnerId",
+  as: "Partner",
+});
+
 Tournament.hasMany(PlayerRegistration, { foreignKey: "tournamentId" });
 PlayerRegistration.belongsTo(Tournament, { foreignKey: "tournamentId" });
 
@@ -121,11 +130,14 @@ Pool.hasMany(Round, { foreignKey: "poolId" });
 Round.hasMany(Match, { foreignKey: "roundId" });
 Match.belongsTo(Round, { foreignKey: "roundId" });
 
-PoolTeamStats.belongsTo(Team, { foreignKey: "teamId" });
+PoolTeamStats.belongsTo(Team, { foreignKey: "teamId", as: "Team" });
 PoolTeamStats.belongsTo(Pool, { foreignKey: "poolId" });
 
-Team.hasOne(PoolTeamStats, { foreignKey: "teamId" });
+Team.hasOne(PoolTeamStats, { foreignKey: "teamId", as: "PoolTeamStat" });
 Pool.hasMany(PoolTeamStats, { foreignKey: "poolId" });
+
+User.belongsTo(Role, { foreignKey: "roleId", as: "role" });
+Role.hasMany(User, { foreignKey: "roleId", as: "users" });
 
 PoolTeam.hasOne(PoolTeamStats, {
   foreignKey: "teamId",
@@ -159,4 +171,6 @@ export default {
   Match,
   Round,
   PoolTeamStats,
+  Team,
+  TeamPlayer,
 };

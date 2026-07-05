@@ -13,7 +13,7 @@ async function seedRoles() {
 }
 
 async function seedFormats() {
-  const formats = ["Double's", "Single's", "Mlp", "Triples"];
+  const formats = ["Double's", "Single's", "MLP", "Triples"];
   for (const name of formats) {
     await prisma.format.upsert({
       where: { name },
@@ -24,7 +24,7 @@ async function seedFormats() {
 }
 
 async function seedGroups() {
-  const groups = ["Men's", "Women's", "Mixed", "Boys", "Girls", "Junior"];
+  const groups = ["Men's", "Women's", "Mixed", "Boys", "Girls", "Junior","Co-Ed"];
   for (const name of groups) {
     await prisma.group.upsert({
       where: { name },
@@ -64,12 +64,22 @@ async function seedBracketFormats() {
 }
 
 async function seedScoringLists() {
-  const scoringLists = ["Rally Scoring", "Side-out Scoring"];
+  const { parseScoringRules, SCORING_OPTIONS } = await import(
+    "../src/utils/scoringRules.js"
+  );
+
+  const scoringLists = [
+    ...SCORING_OPTIONS,
+    "Rally Scoring",
+    "Side-out Scoring",
+  ];
+
   for (const name of scoringLists) {
+    const rules = parseScoringRules(name);
     await prisma.scoringList.upsert({
       where: { name },
-      update: {},
-      create: { name },
+      update: { rules },
+      create: { name, rules },
     });
   }
 }
@@ -178,6 +188,50 @@ async function seedAuthUsers() {
   });
 }
 
+async function seedClubs() {
+  const organizer = await prisma.user.findUnique({
+    where: { email: "organizer@jomg.com" },
+  });
+
+  if (!organizer) {
+    throw new Error("organizer@jomg.com missing — run seedAuthUsers first");
+  }
+
+  const clubs = [
+    {
+      name: "Austin Pickleball Club",
+      location: "1435 Main St, Austin, TX 78701",
+      phoneNumber: "(512) 555-0100",
+      clubType: "public",
+      description: "Sample club for local dev",
+    },
+    {
+      name: "Dallas Pickleball Association",
+      location: "8500 Preston Rd, Dallas, TX 75225",
+      phoneNumber: "(469) 555-0107",
+      clubType: "public",
+      description: "Second sample club for local dev",
+    },
+  ];
+
+  for (const club of clubs) {
+    const existing = await prisma.club.findFirst({
+      where: { hostId: organizer.id, name: club.name },
+    });
+
+    if (existing) {
+      await prisma.club.update({
+        where: { id: existing.id },
+        data: club,
+      });
+    } else {
+      await prisma.club.create({
+        data: { ...club, hostId: organizer.id },
+      });
+    }
+  }
+}
+
 async function main() {
   await seedRoles();
   await seedFormats();
@@ -186,6 +240,7 @@ async function main() {
   await seedScoringLists();
   await seedPlayoffSeedings();
   await seedAuthUsers();
+  await seedClubs();
 }
 
 main()
