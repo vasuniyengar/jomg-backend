@@ -52,6 +52,15 @@ const registerForBracket = async (req, res) => {
       });
     }
 
+    if (tournament.status !== "active") {
+      return res.status(400).json({
+        error: true,
+        code: 400,
+        message:
+          "Registration is not open. This tournament has not been published yet.",
+      });
+    }
+
     const bracket = await Bracket.findByPk(bracketId, {
       include: [{ model: Event }],
     });
@@ -210,21 +219,22 @@ const registeredPlayersForTournament = async (req, res) => {
             "gender",
             "age",
             "phoneNumber",
+            "duprRating",
+            "duprId",
           ],
         },
         {
           model: Bracket,
           include: [{ model: Event, attributes: ["id", "eventName"] }],
         },
+        {
+          model: User,
+          as: "Partner",
+          required: false,
+          attributes: ["id", "firstname", "lastname"],
+        },
       ],
-      order: [
-        [
-          sequelize.literal(
-            "FIELD(`PlayerRegistration`.`checkInStatus`, 'not_checked_in', 'checked_in')"
-          ),
-          "ASC",
-        ],
-      ],
+      order: [["checkInStatus", "ASC"]],
     });
 
     if (!registrations.length) {
@@ -235,6 +245,11 @@ const registeredPlayersForTournament = async (req, res) => {
         data: [],
       });
     }
+
+    const regByPlayerBracket = new Map();
+    registrations.forEach((reg) => {
+      regByPlayerBracket.set(`${reg.playerId}:${reg.bracketId}`, reg);
+    });
 
     // Group by player
     const playersMap = {};
@@ -250,11 +265,23 @@ const registeredPlayersForTournament = async (req, res) => {
           phoneNumber: reg.User.phoneNumber,
           age: reg.User.age,
           gender: reg.User.gender,
+          duprRating: reg.User.duprRating != null ? Number(reg.User.duprRating) : null,
+          duprId: reg.User.duprId || null,
           events: [],
         };
       }
 
-      // Add all events/brackets
+      const partnerId = reg.partnerId || null;
+      let partnerName = null;
+      let partnerCheckInStatus = null;
+      if (reg.Partner) {
+        partnerName = `${reg.Partner.firstname} ${reg.Partner.lastname}`.trim();
+      }
+      if (partnerId) {
+        const partnerReg = regByPlayerBracket.get(`${partnerId}:${reg.bracketId}`);
+        partnerCheckInStatus = partnerReg?.checkInStatus || null;
+      }
+
       playersMap[playerId].events.push({
         registrationId: reg.id,
         bracketId: reg.Bracket.id,
@@ -263,7 +290,15 @@ const registeredPlayersForTournament = async (req, res) => {
         eventName: reg.Bracket.Event?.eventName || null,
         status: reg.status,
         paymentStatus: reg.paymentStatus,
+        paymentEmailSentCount: reg.paymentEmailSentCount ?? 0,
         checkInStatus: reg.checkInStatus,
+        checkInTime: reg.checkInTime || null,
+        partnerId,
+        partnerName,
+        partnerCheckInStatus,
+        clubName: reg.clubName || null,
+        rosterNumber: reg.rosterNumber || null,
+        playerRole: reg.playerRole || null,
       });
     });
 

@@ -18,12 +18,13 @@ model User {
   profilePicture      String?
   age                 Int
   gender              String
-  phoneNumber         String               @unique
+  phoneNumber         String               
   isVerified          Boolean              @default(false)
   verificationToken   String?
   passwordResetToken  String?
   passwordResetExpires DateTime?
   accountExpiresAt    DateTime?
+  duprRating          Decimal?             @db.Decimal(4, 2)
   tokenVersion        Int                  @default(0)
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
@@ -31,7 +32,15 @@ model User {
   hostedClubs         Club[]               @relation("ClubHost")
   hostedTournaments   Tournament[]         @relation("TournamentHost")
   registrations       PlayerRegistration[]
+  partnerRegistrations PlayerRegistration[] @relation("RegistrationPartner")
   teamPlayers         TeamPlayer[]
+  duprId      String?
+  instagram   String?
+  facebook    String?
+  paymentMethod String?
+  paymentStatus String?
+  roleId              Int?
+  role    Role?    @relation(fields: [roleId], references: [id], onDelete: SetNull)
 
   @@map("users")
 }
@@ -42,6 +51,7 @@ model Role {
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   userRoles UserRole[]
+  users     User[]
 
   @@map("roles")
 }
@@ -90,6 +100,13 @@ model Tournament {
   status                String
   organizerInfo         String
   slug                  String               @unique
+  venue                 String?
+  timezone              String?
+  refundDeadline        DateTime?            @db.Date
+  refundFee             Decimal              @default(0) @db.Decimal(10, 2)
+  duprRecorded          Boolean              @default(true)
+  duprEnforced          Boolean              @default(false)
+  requireSkillRating    Boolean              @default(false)
   clubId                Int
   hostId                Int
   createdAt             DateTime             @default(now())
@@ -146,6 +163,7 @@ model BracketFormat {
 model ScoringList {
   id        Int       @id @default(autoincrement())
   name      String    @unique
+  rules     Json?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   brackets  Bracket[]
@@ -170,8 +188,8 @@ model Bracket {
   maxTeams        Int
   minAge          Int?                 @default(0)
   maxAge          Int?                 @default(0)
-  minRating       Int                  @default(0)
-  maxRating       Int                  @default(0)
+  minRating       Decimal              @default(0) @db.Decimal(4, 2)
+  maxRating       Decimal              @default(0) @db.Decimal(4, 2)
   bracketFormatId Int
   scoringListId   Int
   playoffSeedingId Int
@@ -185,8 +203,10 @@ model Bracket {
   poolStarted     Boolean              @default(false)
   status          String               @default("draft")
   startDate       DateTime             @db.Date
+  startTime       String?              @db.VarChar(8)
   endDate         DateTime             @db.Date
   registrationFee Decimal              @default(0) @db.Decimal(10, 2)
+  scoringConfig   Json?
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
   tournament      Tournament           @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
@@ -198,6 +218,7 @@ model Bracket {
   pools           Pool[]
   registrations   PlayerRegistration[]
   rounds          Round[]
+  division  String?
 
   @@map("brackets")
 }
@@ -240,17 +261,24 @@ model TeamPlayer {
 model PlayerRegistration {
   id            Int       @id @default(autoincrement())
   playerId      Int
+  partnerId     Int?
   tournamentId  Int
   bracketId     Int
   status        String    @default("registered")
-  paymentStatus String    @default("paid")
-  checkInStatus String    @default("not_checked_in")
-  checkInTime   DateTime?
+  paymentStatus          String    @default("paid")
+  paymentEmailSentCount  Int       @default(0)
+  checkInStatus          String    @default("not_checked_in")
+  checkInTime            DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   player        User      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  partner       User?     @relation("RegistrationPartner", fields: [partnerId], references: [id], onDelete: SetNull)
   tournament    Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   bracket       Bracket   @relation(fields: [bracketId], references: [id], onDelete: Cascade)
+  rosterNumber  String?
+  playerRole    String?
+  clubName      String?
+  division      String?
 
   @@map("playerregistrations")
 }

@@ -43,6 +43,10 @@ const User = sequelize.define(
     //   type: DataTypes.TEXT, // or STRING if you prefer
     //   allowNull: true,
     // },
+    duprRating: {
+      type: DataTypes.DECIMAL(4, 2),
+      allowNull: true,
+    },
     age: {
       type: DataTypes.INTEGER,
       allowNull: false,
@@ -54,7 +58,6 @@ const User = sequelize.define(
     phoneNumber: {
       type: DataTypes.STRING(25),
       allowNull: false,
-      unique: true,
       validate: {
         is: /^\+?[0-9\s-()]{7,25}$/,
       },
@@ -85,6 +88,36 @@ const User = sequelize.define(
       allowNull: false,
       defaultValue: 0,
     },
+      duprId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+     instagram: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+      facebook: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    paymentMethod: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+      paymentStatus: {
+      type: DataTypes.ENUM("paid", "unpaid", "refunded"),
+      allowNull: false,
+      defaultValue: "paid",
+    },
+    roleId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: "roles",
+      key: "id",
+  },
+},
+
   },
   {
     tableName: "users",

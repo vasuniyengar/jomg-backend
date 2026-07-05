@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import process from "node:process";
+import path from "node:path";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -32,8 +33,13 @@ import playerRoutes from "./src/routes/playerRoutes.js";
 import hostRoutes from "./src/routes/hostRoutes.js";
 
 import verifyRoutes from "./src/routes/verifyRoutes.js";
+import playoffRoutes from "./src/routes/playoffRoutes.js";
 
 import playerRegistrationRoutes from "./src/routes/playerRegistrationRoutes.js";
+import roundRobinRouter from "./src/routes/roundRobinRoutes.js";
+import publicTournamentRoutes from "./src/routes/publicTournamentRoutes.js";
+
+
 
 const app = express();
 
@@ -50,6 +56,10 @@ if (frontendUrl && !allowedOrigins.includes(frontendUrl)) {
 const isDev = process.env.NODE_ENV !== "production";
 const isLocalOrigin = (origin) =>
   /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+const isPrivateLanOrigin = (origin) =>
+  /^https?:\/\/(?:192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/.test(
+    origin
+  );
 
 app.use(helmet());
 app.use(
@@ -61,7 +71,7 @@ app.use(
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
-      if (isDev && isLocalOrigin(origin)) {
+      if (isDev && (isLocalOrigin(origin) || isPrivateLanOrigin(origin))) {
         return callback(null, true);
       }
       return callback(new Error("CORS origin denied"));
@@ -98,10 +108,14 @@ app.use("/api/users", userRoutes);
 
 app.use("/api/auth", authRoutes);
 app.use("/api", authSigninRoutes);
-
+app.use("/api/round-robin", roundRobinRouter);
 app.use("/api/clubs", clubRoutes);
 
 app.use("/api/tournaments", tournamentRoutes);
+
+app.use("/api/public/tournaments", publicTournamentRoutes);
+
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 // app.use("/uploads", express.static("uploads"));
 
@@ -111,6 +125,7 @@ app.use("/api/events", eventRoutes);
 
 // app.use("/api/players", playerRoutes);
 
+app.use("/api/tournaments", playoffRoutes);
 app.use("/api/players", playerRegistrationRoutes);
 
 app.use("/api/host", hostRoutes);
@@ -126,6 +141,17 @@ const startServer = async () => {
     console.log("database connected");
     httpServer = app.listen(port, "0.0.0.0", () => {
       console.log(`Server is running on port ${port}`);
+    });
+
+    httpServer.on("error", (err) => {
+      if (err.code === "EADDRINUSE") {
+        console.error(
+          `Port ${port} is already in use. Stop the other process (e.g. lsof -i :${port}) and restart.`
+        );
+      } else {
+        console.error("HTTP server error:", err);
+      }
+      process.exit(1);
     });
   } catch (error) {
     console.error("Startup failure", error);

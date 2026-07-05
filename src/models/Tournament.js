@@ -1,8 +1,7 @@
 import sequelize from "../config/database.js";
+import { resolveMediaUrl, extractMediaKey } from "../services/tournamentMediaService.js";
 
 import { DataTypes } from "sequelize";
-
-// const S3_BASE_URL = `https://s3.${process.env.AWS_REGION}.amazonaws.com/${process.env.AWS_BUCKET_NAME}`;
 
 const Tournament = sequelize.define(
   "Tournament",
@@ -32,16 +31,8 @@ const Tournament = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
       get() {
-        const S3_BASE_URL =
-          process.env.AWS_S3_BASE_URL ||
-          "https://s3.us-east-1.amazonaws.com/pb-images-storage/";
-
         const rawValue = this.getDataValue("tournamentTumbnail");
-
-        if (rawValue && S3_BASE_URL) {
-          return `${S3_BASE_URL.replace(/\/$/, "")}/${rawValue}`;
-        }
-        return null;
+        return resolveMediaUrl(rawValue);
       },
       set(value) {
         if (!value) {
@@ -49,20 +40,20 @@ const Tournament = sequelize.define(
           return;
         }
 
-        const BASE_URL =
-          process.env.AWS_S3_BASE_URL ||
-          "https://s3.us-east-1.amazonaws.com/pb-images-storage/";
-        let keyToStore = value;
-
-        if (typeof value === "string" && value.startsWith(BASE_URL)) {
-          keyToStore = value.substring(BASE_URL.length);
-        }
-        this.setDataValue("tournamentTumbnail", keyToStore);
+        this.setDataValue("tournamentTumbnail", extractMediaKey(value));
       },
+    },
+    venue: {
+      type: DataTypes.STRING,
+      allowNull: true,
     },
     location: {
       type: DataTypes.STRING,
       allowNull: false,
+    },
+    timezone: {
+      type: DataTypes.STRING,
+      allowNull: true,
     },
     startDate: {
       type: DataTypes.DATEONLY,
@@ -80,6 +71,26 @@ const Tournament = sequelize.define(
       type: DataTypes.DATEONLY,
       allowNull: false,
     },
+    refundDeadline: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+    },
+    refundFee: {
+      type: DataTypes.DECIMAL(10, 2),
+      defaultValue: 0,
+    },
+    duprRecorded: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
+    },
+    duprEnforced: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+    requireSkillRating: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
     status: {
       type: DataTypes.ENUM("draft", "active", "ongoing", "completed"),
       allowNull: false,
@@ -92,6 +103,14 @@ const Tournament = sequelize.define(
       type: DataTypes.STRING,
       allowNull: false,
       unique: true,
+    },
+    clubId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+    },
+    hostId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
     },
   },
   {

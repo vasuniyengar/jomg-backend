@@ -15,6 +15,10 @@ const ScoringList = sequelize.define(
       allowNull: false,
       unique: true,
     },
+    rules: {
+      type: DataTypes.JSONB,
+      allowNull: true,
+    },
     createdAt: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,

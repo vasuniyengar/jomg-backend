@@ -21,6 +21,10 @@ const PlayerRegistration = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: false,
     },
+    partnerId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
     status: {
       type: DataTypes.ENUM(
         "all",
@@ -35,7 +39,12 @@ const PlayerRegistration = sequelize.define(
     paymentStatus: {
       type: DataTypes.ENUM("paid", "unpaid", "refunded"),
       allowNull: false,
-      defaultValue: "paid",
+      defaultValue: "unpaid",
+    },
+    paymentEmailSentCount: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
     },
     checkInStatus: {
       type: DataTypes.ENUM("not_checked_in", "checked_in"),
@@ -44,6 +53,23 @@ const PlayerRegistration = sequelize.define(
     },
     checkInTime: {
       type: DataTypes.DATE,
+      allowNull: true,
+    },
+    rosterNumber: {        
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    playerRole: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+   
+    clubName: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+     division: {
+      type: DataTypes.STRING,
       allowNull: true,
     },
   },
