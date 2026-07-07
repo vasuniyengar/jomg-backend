@@ -11,7 +11,11 @@ import rateLimit from "express-rate-limit";
 import prisma from "./src/config/prisma.js";
 import { getDatabaseConnectionInfo } from "./src/config/database.js";
 import errorHandler from "./src/middlewares/errorHandler.js";
-import { sanitizeErrorPayload } from "./src/utils/errorResponse.js";
+import {
+  logApiError,
+  sanitizeErrorPayload,
+  shouldExposeApiErrors,
+} from "./src/utils/errorResponse.js";
 
 const port = process.env.PORT || 5000;
 
@@ -47,19 +51,7 @@ app.use((req, res, next) => {
   const originalJson = res.json.bind(res);
 
   res.json = (payload) => {
-    if (
-      process.env.NODE_ENV === "production" &&
-      res.statusCode >= 500 &&
-      payload &&
-      typeof payload === "object" &&
-      payload.message &&
-      payload.message !== "Internal server error"
-    ) {
-      console.error(
-        `[API ${res.statusCode}] ${req.method} ${req.originalUrl} -> ${payload.message}`
-      );
-    }
-
+    logApiError(req, res.statusCode, payload);
     return originalJson(sanitizeErrorPayload(payload, res.statusCode));
   };
 
@@ -174,6 +166,9 @@ const startServer = async () => {
     }
 
     logDatabaseStartup("API");
+    console.log(
+      `[API] EXPOSE_API_ERRORS=${shouldExposeApiErrors() ? "enabled" : "disabled"}`
+    );
     await prisma.$queryRaw`SELECT 1`;
 
     console.log("database connected");
