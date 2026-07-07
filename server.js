@@ -11,7 +11,9 @@ dotenv.config();
 // import s3Client from "./src/config/s3Client.js";
 // import sqsClient from "./src/config/sqsClient.js";
 import prisma from "./src/config/prisma.js";
+import { getDatabaseConnectionInfo } from "./src/config/database.js";
 import errorHandler from "./src/middlewares/errorHandler.js";
+import { sanitizeErrorPayload } from "./src/utils/errorResponse.js";
 
 const port = process.env.PORT || 5000;
 
@@ -42,6 +44,14 @@ import publicTournamentRoutes from "./src/routes/publicTournamentRoutes.js";
 
 
 const app = express();
+
+app.use((req, res, next) => {
+  const originalJson = res.json.bind(res);
+
+  res.json = (payload) => originalJson(sanitizeErrorPayload(payload, res.statusCode));
+
+  next();
+});
 
 const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
   .split(",")
@@ -134,8 +144,16 @@ app.use(errorHandler);
 
 let httpServer;
 
+function logDatabaseStartup(context) {
+  const info = getDatabaseConnectionInfo();
+  console.log(
+    `[${context}] DB config host=${info.host} port=${info.port} db=${info.database} dialect=${info.dialect} ssl=${info.sslEnabled ? "enabled" : "disabled"} source=${info.source}`
+  );
+}
+
 const startServer = async () => {
   try {
+    logDatabaseStartup("API");
     await prisma.$queryRaw`SELECT 1`;
 
     console.log("database connected");

@@ -2,7 +2,7 @@ import { Consumer } from "sqs-consumer";
 import Mailgen from "mailgen";
 import dotenv from "dotenv";
 import sendEmail from "./src/utils/sendEmail.js";
-import sequelize from "./src/config/database.js";
+import sequelize, { getDatabaseConnectionInfo } from "./src/config/database.js";
 import { processPaymentRegistrationJob } from "./src/utils/paymentRegistrationWorker.js";
 import { SQSClient, DeleteMessageCommand } from "@aws-sdk/client-sqs";
 
@@ -265,6 +265,10 @@ app.on("stopped", () => {
 
 const startWorker = async () => {
   try {
+    const dbInfo = getDatabaseConnectionInfo();
+    console.log(
+      `[Worker] DB config host=${dbInfo.host} port=${dbInfo.port} db=${dbInfo.database} dialect=${dbInfo.dialect} ssl=${dbInfo.sslEnabled ? "enabled" : "disabled"} source=${dbInfo.source}`
+    );
     await sequelize.authenticate();
     console.log("[Worker] Database connected");
   } catch (err) {
