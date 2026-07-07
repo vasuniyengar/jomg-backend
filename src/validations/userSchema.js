@@ -126,4 +126,48 @@ const userLoginValidation = (req, res, next) => {
   }
 };
 
-export default { userSignupValidation, userLoginValidation };
+const passwordPattern = new RegExp("^(?=.*[A-Za-z])(?=.*\\d)[A-Za-z\\d@$!%*?&]{8,30}$");
+
+const changePasswordValidation = (req, res, next) => {
+  try {
+    const schema = Joi.object({
+      currentPassword: Joi.string().required().messages({
+        "string.empty": "Current password is required",
+        "any.required": "Current password is required",
+      }),
+      newPassword: Joi.string().pattern(passwordPattern).required().messages({
+        "string.pattern.base":
+          "New password must be 8-30 characters and include at least one letter and one number",
+        "string.empty": "New password is required",
+        "any.required": "New password is required",
+      }),
+      confirmPassword: Joi.string()
+        .valid(Joi.ref("newPassword"))
+        .required()
+        .messages({
+          "any.only": "New passwords do not match",
+          "string.empty": "Please confirm your new password",
+          "any.required": "Please confirm your new password",
+        }),
+    });
+
+    const { error } = schema.validate(req.body);
+    if (error) {
+      return res.status(400).json({
+        code: 400,
+        error: true,
+        message: error.details[0].message,
+      });
+    }
+
+    next();
+  } catch (error) {
+    res.status(500).json({
+      error: true,
+      code: 500,
+      message: error.message,
+    });
+  }
+};
+
+export default { userSignupValidation, userLoginValidation, changePasswordValidation };

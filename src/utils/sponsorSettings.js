@@ -75,11 +75,13 @@ export function mapSponsorsForPublic(sponsors) {
     items: merged.tiers[key].items
       .filter((item) => item.name || item.logoKey)
       .map((item) => ({
-        name: item.name || "Sponsor",
+        id: item.id,
+        name: item.name || "",
         url: item.url || "#",
         logo: resolveMediaUrl(item.logoKey),
         darkLogo: item.darkLogo,
-      })),
+      }))
+      .filter((item) => item.name || item.logo),
   })).filter((tier) => tier.items.length > 0);
 
   return { tiers };
