@@ -1,7 +1,5 @@
+import "dotenv/config";
 import { Sequelize } from "sequelize";
-import dotenv from "dotenv";
-
-dotenv.config();
 
 const parsedDatabaseUrl = process.env.DATABASE_URL
   ? new URL(process.env.DATABASE_URL)

@@ -1,12 +1,10 @@
+import "dotenv/config";
 import { Consumer } from "sqs-consumer";
 import Mailgen from "mailgen";
-import dotenv from "dotenv";
 import sendEmail from "./src/utils/sendEmail.js";
 import sequelize, { getDatabaseConnectionInfo } from "./src/config/database.js";
 import { processPaymentRegistrationJob } from "./src/utils/paymentRegistrationWorker.js";
 import { SQSClient, DeleteMessageCommand } from "@aws-sdk/client-sqs";
-
-dotenv.config();
 
 // Created shared SQS client for both Consumer and manual deletion
 const sqsClient = new SQSClient({
