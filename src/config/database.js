@@ -1,9 +1,11 @@
 import "dotenv/config";
 import { Sequelize } from "sequelize";
+import { getDatabaseUrl, getDatabaseUrlParts } from "./databaseUrl.js";
 
-const parsedDatabaseUrl = process.env.DATABASE_URL
-  ? new URL(process.env.DATABASE_URL)
-  : null;
+const databaseUrl = getDatabaseUrl();
+const urlParts = getDatabaseUrlParts();
+
+const parsedDatabaseUrl = databaseUrl ? new URL(databaseUrl) : null;
 const fallbackDialect = parsedDatabaseUrl?.protocol?.replace(":", "") || "mysql";
 const fallbackPort = parsedDatabaseUrl?.port
   ? Number(parsedDatabaseUrl.port)
@@ -12,17 +14,21 @@ const fallbackPort = parsedDatabaseUrl?.port
     : 3306;
 const resolvedDialect =
   process.env.DB_DIALECT || (fallbackDialect === "postgresql" ? "postgres" : fallbackDialect);
-const resolvedHost = process.env.DB_HOST || parsedDatabaseUrl?.hostname || "localhost";
-const resolvedPort = Number(process.env.DB_PORT || fallbackPort);
+const resolvedHost =
+  process.env.DB_HOST || urlParts?.host || parsedDatabaseUrl?.hostname || "localhost";
+const resolvedPort = Number(process.env.DB_PORT || urlParts?.port || fallbackPort);
 const resolvedDatabase =
-  process.env.DB_NAME || parsedDatabaseUrl?.pathname?.replace(/^\//, "");
-const resolvedUser = process.env.DB_USER || parsedDatabaseUrl?.username;
-const resolvedPassword = process.env.DB_PASSWORD || parsedDatabaseUrl?.password;
+  process.env.DB_NAME || urlParts?.database || parsedDatabaseUrl?.pathname?.replace(/^\//, "");
+const resolvedUser =
+  process.env.DB_USER || urlParts?.user || parsedDatabaseUrl?.username;
+const resolvedPassword =
+  process.env.DB_PASSWORD || parsedDatabaseUrl?.password;
 const rawSslMode = parsedDatabaseUrl?.searchParams?.get("sslmode");
 const postgresSslEnabled =
   resolvedDialect === "postgres" &&
   (process.env.DB_SSL === "true" ||
     process.env.NODE_ENV === "production" ||
+    resolvedHost.includes(".rds.amazonaws.com") ||
     Boolean(rawSslMode && rawSslMode !== "disable"));
 
 function buildSequelizeOptions() {
@@ -57,24 +63,19 @@ export function getDatabaseConnectionInfo() {
     port: resolvedPort,
     database: resolvedDatabase,
     sslEnabled: postgresSslEnabled,
-    source: process.env.DATABASE_URL ? "DATABASE_URL" : "DB_*",
+    source: databaseUrl || process.env.DATABASE_URL ? "DATABASE_URL" : "DB_*",
   };
 }
 
 const sequelizeOptions = buildSequelizeOptions();
 
 const sequelize =
-  resolvedDialect === "postgres" && process.env.DATABASE_URL
-    ? new Sequelize(process.env.DATABASE_URL, sequelizeOptions)
-    : new Sequelize(
-        resolvedDatabase,
-        resolvedUser,
-        resolvedPassword,
-        {
-          ...sequelizeOptions,
-          host: resolvedHost,
-          port: resolvedPort,
-        }
-      );
+  resolvedDialect === "postgres" && databaseUrl
+    ? new Sequelize(databaseUrl, sequelizeOptions)
+    : new Sequelize(resolvedDatabase, resolvedUser, resolvedPassword, {
+        ...sequelizeOptions,
+        host: resolvedHost,
+        port: resolvedPort,
+      });
 
 export default sequelize;
