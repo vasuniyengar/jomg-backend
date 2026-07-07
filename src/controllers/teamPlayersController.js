@@ -694,7 +694,6 @@ const createTeamFromPlayers = async (req, res) => {
         tournamentId,
         playerId: uniqueIds,
         status: "registered",
-        paymentStatus: "paid",
       },
       include: [
         {
@@ -710,7 +709,7 @@ const createTeamFromPlayers = async (req, res) => {
       return res.status(400).json({
         error: true,
         code: 400,
-        message: "One or more players are not registered and paid for this division",
+        message: "One or more players are not registered for this division",
       });
     }
 

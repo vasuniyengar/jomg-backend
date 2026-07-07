@@ -22,7 +22,7 @@ import {
   hasPaymentInstructions,
 } from "../utils/paymentRegistrationEmail.js";
 import { linkBulkUploadPartners } from "../utils/linkRegistrationPartners.js";
-import { parseDuprRating } from "../utils/parseDuprRating.js";
+import { parseDuprCombinedRating, parseDuprRating } from "../utils/parseDuprRating.js";
 import { validateMlpTeamRoster } from "../utils/mlpRosterValidation.js";
 
 // const {
@@ -126,10 +126,10 @@ const mergeDivisionScoringConfig = (resolved, input, tournament) => {
       ? { duprEnforced: Boolean(input.duprEnforced) }
       : {}),
     ...(input?.duprCombinedMin !== undefined
-      ? { duprCombinedMin: input.duprCombinedMin }
+      ? { duprCombinedMin: parseDuprCombinedRating(input.duprCombinedMin) }
       : {}),
     ...(input?.duprCombinedMax !== undefined
-      ? { duprCombinedMax: input.duprCombinedMax }
+      ? { duprCombinedMax: parseDuprCombinedRating(input.duprCombinedMax) }
       : {}),
     ...(input?.skillLevel !== undefined
       ? { skillLevel: String(input.skillLevel || "").trim() }

@@ -27,6 +27,13 @@ router.post("/verify-reset-code", userController.verifyResetCode);
 
 router.post("/reset-password", userController.resetPassword);
 
+router.put(
+  "/change-password",
+  middlewares.authenticate,
+  userValidations.changePasswordValidation,
+  userController.changePassword
+);
+
 router.get("/me", middlewares.authenticate, userController.getCurrentUser);
 
 router.put(

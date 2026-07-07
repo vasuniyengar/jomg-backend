@@ -874,6 +874,60 @@ const verifyingRole = async (req, res) => {
   }
 };
 
+const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    if (!user || !user.password) {
+      return res.status(400).json({
+        error: true,
+        code: 400,
+        message: "Password login is not available for this account.",
+      });
+    }
+
+    const valid = await bcrypt.compare(currentPassword, user.password);
+    if (!valid) {
+      return res.status(401).json({
+        error: true,
+        code: 401,
+        message: "Current password is incorrect.",
+      });
+    }
+
+    const same = await bcrypt.compare(newPassword, user.password);
+    if (same) {
+      return res.status(400).json({
+        error: true,
+        code: 400,
+        message: "New password must be different from current password.",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        tokenVersion: { increment: 1 },
+      },
+    });
+
+    return res.status(200).json({
+      error: false,
+      code: 200,
+      message: "Password changed successfully. Please sign in again.",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: true,
+      code: 500,
+      message: error.message,
+    });
+  }
+};
+
 const getCurrentUser = async (req, res) => {
   try {
     const user = await User.findByPk(req.user.id);
@@ -925,5 +979,6 @@ export default {
   resetPassword,
   verifyResetCode,
   forgotPassword,
+  changePassword,
   getCurrentUser,
 };
