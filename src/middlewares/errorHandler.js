@@ -1,15 +1,15 @@
+import { isProductionEnv, publicErrorMessage } from "../utils/errorResponse.js";
+
 export default function errorHandler(err, req, res, next) {
   const status = err.status || 500;
-  const isProd = process.env.NODE_ENV === "production";
+  const isProd = isProductionEnv();
 
-  if (!isProd) {
-    console.error(err);
-  }
+  console.error(err);
 
   res.status(status).json({
     code: status,
     error: true,
-    message: err.message || "Internal server error",
+    message: status >= 500 ? publicErrorMessage(err) : err.message || "Request failed",
     ...(isProd ? {} : { stack: err.stack }),
   });
 }
