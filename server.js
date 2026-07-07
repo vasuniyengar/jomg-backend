@@ -1,12 +1,10 @@
-import dotenv from "dotenv";
+import "dotenv/config";
 import process from "node:process";
 import path from "node:path";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-
-dotenv.config();
 
 // import s3Client from "./src/config/s3Client.js";
 // import sqsClient from "./src/config/sqsClient.js";
@@ -48,7 +46,22 @@ const app = express();
 app.use((req, res, next) => {
   const originalJson = res.json.bind(res);
 
-  res.json = (payload) => originalJson(sanitizeErrorPayload(payload, res.statusCode));
+  res.json = (payload) => {
+    if (
+      process.env.NODE_ENV === "production" &&
+      res.statusCode >= 500 &&
+      payload &&
+      typeof payload === "object" &&
+      payload.message &&
+      payload.message !== "Internal server error"
+    ) {
+      console.error(
+        `[API ${res.statusCode}] ${req.method} ${req.originalUrl} -> ${payload.message}`
+      );
+    }
+
+    return originalJson(sanitizeErrorPayload(payload, res.statusCode));
+  };
 
   next();
 });
@@ -153,6 +166,13 @@ function logDatabaseStartup(context) {
 
 const startServer = async () => {
   try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL is not set");
+    }
+    if (!process.env.JWT_SECRET && !process.env.ACCESS_TOKEN_JWT_SECRET) {
+      throw new Error("JWT_SECRET or ACCESS_TOKEN_JWT_SECRET is not set");
+    }
+
     logDatabaseStartup("API");
     await prisma.$queryRaw`SELECT 1`;
 
