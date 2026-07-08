@@ -11,6 +11,7 @@ const {
   User,
   Event,
   Pool,
+  Team,
   TeamPlayer,
   Match,
   Round,
@@ -169,8 +170,14 @@ const registerForBracket = async (req, res) => {
 const registeredPlayersForTournament = async (req, res) => {
   try {
     const { tournamentId } = req.params;
-    const { checkInStatus, paymentStatus, gender, search, bracketId } =
-      req.query;
+    const {
+      checkInStatus,
+      paymentStatus,
+      gender,
+      search,
+      bracketId,
+      unassignedOnly,
+    } = req.query;
 
     // console.log("check", checkInStatus);
     // console.log("pay", paymentStatus), console.log("gender", gender);
@@ -198,31 +205,62 @@ const registeredPlayersForTournament = async (req, res) => {
       ];
     }
 
+    const parsedBracketId = bracketId ? Number(bracketId) : null;
+
     // Build registration filter
     const registrationWhere = { tournamentId };
     if (checkInStatus) registrationWhere.checkInStatus = checkInStatus;
     if (paymentStatus) registrationWhere.paymentStatus = paymentStatus;
-    if (bracketId) registrationWhere.bracketId = bracketId;
+    if (parsedBracketId) registrationWhere.bracketId = parsedBracketId;
+
+    if (unassignedOnly === "true" && parsedBracketId) {
+      const assignedRows = await TeamPlayer.findAll({
+        attributes: ["playerId"],
+        include: [
+          {
+            model: Team,
+            as: "Team",
+            where: { tournamentId, bracketId: parsedBracketId },
+            attributes: [],
+            required: true,
+          },
+        ],
+        raw: true,
+      });
+      const assignedIds = [
+        ...new Set(
+          assignedRows.map((row) => Number(row.playerId)).filter(Boolean)
+        ),
+      ];
+      if (assignedIds.length) {
+        registrationWhere.playerId = { [Op.notIn]: assignedIds };
+      }
+    }
+
+    const userInclude = {
+      model: User,
+      attributes: [
+        "id",
+        "firstname",
+        "lastname",
+        "email",
+        "gender",
+        "age",
+        "phoneNumber",
+        "duprRating",
+        "duprId",
+      ],
+    };
+    if (Object.keys(userWhere).length) {
+      userInclude.where = userWhere;
+      userInclude.required = true;
+    }
 
     // Fetch registrations
     const registrations = await PlayerRegistration.findAll({
       where: registrationWhere,
       include: [
-        {
-          model: User,
-          where: userWhere,
-          attributes: [
-            "id",
-            "firstname",
-            "lastname",
-            "email",
-            "gender",
-            "age",
-            "phoneNumber",
-            "duprRating",
-            "duprId",
-          ],
-        },
+        userInclude,
         {
           model: Bracket,
           include: [{ model: Event, attributes: ["id", "eventName"] }],
@@ -284,10 +322,10 @@ const registeredPlayersForTournament = async (req, res) => {
 
       playersMap[playerId].events.push({
         registrationId: reg.id,
-        bracketId: reg.Bracket.id,
-        bracketName: reg.Bracket.name,
-        eventId: reg.Bracket.Event?.id || null,
-        eventName: reg.Bracket.Event?.eventName || null,
+        bracketId: reg.bracketId ?? reg.Bracket?.id,
+        bracketName: reg.Bracket?.name || reg.division || null,
+        eventId: reg.Bracket?.Event?.id || null,
+        eventName: reg.Bracket?.Event?.eventName || null,
         status: reg.status,
         paymentStatus: reg.paymentStatus,
         paymentEmailSentCount: reg.paymentEmailSentCount ?? 0,
