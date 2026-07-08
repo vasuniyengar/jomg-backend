@@ -281,6 +281,45 @@ const normalizeRegistrationPaymentStatus = (row) => {
   return "unpaid";
 };
 
+const isMlpEventName = (eventName) => /mlp/i.test(String(eventName || ""));
+
+const resolveBulkUploadTeamRole = (value) => {
+  const v = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (v === "partner" || v === "host") return v;
+  return "player";
+};
+
+const getBulkUploadDivisionCapacity = (eventName, maxTeams) => {
+  if (isMlpEventName(eventName)) return Number(maxTeams || 0) * 6;
+  if (/double|mixed/i.test(String(eventName || ""))) return Number(maxTeams || 0) * 2;
+  return Number(maxTeams || 0);
+};
+
+const summarizeMlpTeamRoster = async (teamId, transaction = null) => {
+  const roster = await TeamPlayer.findAll({
+    where: { teamId },
+    include: [{ model: User, as: "User", attributes: ["gender"] }],
+    transaction,
+  });
+
+  let males = 0;
+  let females = 0;
+  for (const slot of roster) {
+    const gender = String(slot.User?.gender || "").toLowerCase();
+    if (gender.startsWith("m")) males += 1;
+    else if (gender.startsWith("f")) females += 1;
+  }
+
+  return {
+    playerCount: roster.length,
+    males,
+    females,
+    isComplete: roster.length >= 4 && males >= 2 && females >= 2,
+  };
+};
+
 const resolveBulkUploadPhone = (row) => {
   const phone = String(row.phone || row.Phone || "").trim();
   if (phone && /^\+?[0-9\s-()]{7,25}$/.test(phone)) return phone;
@@ -741,13 +780,7 @@ export const bulkUploadPlayers = async (req, res) => {
         }
 
         const eventName = bracket.Event?.eventName?.toLowerCase() || "";
-        if (/mlp/i.test(eventName)) {
-          errors.push({
-            row: rowNum,
-            reason: "MLP team divisions are not supported in bulk upload yet",
-          });
-          continue;
-        }
+        const isMlpDivision = isMlpEventName(eventName);
 
         const gender = normalizeGender(row.gender || row.Gender);
         if (/\bmen\b/.test(eventName) && gender !== "male") {
@@ -838,9 +871,7 @@ export const bulkUploadPlayers = async (req, res) => {
           where: { tournamentId, bracketId: bracket.id },
           transaction: t,
         });
-        let playersPerTeam = 1;
-        if (/double|mixed/i.test(eventName)) playersPerTeam = 2;
-        const capacity = bracket.maxTeams * playersPerTeam;
+        const capacity = getBulkUploadDivisionCapacity(eventName, bracket.maxTeams);
         if (regCount >= capacity) {
           errors.push({ row: rowNum, reason: "Division is full" });
           continue;
@@ -879,25 +910,36 @@ export const bulkUploadPlayers = async (req, res) => {
                   bracketId: bracket.id,
                   tournamentId,
                   status: "registered",
-                  paymentStatus: "paid",
+                  paymentStatus: regPaymentStatus === "paid" ? "paid" : "unpaid",
                   isComplete: false,
                 },
                 { transaction: t }
               );
             }
+            if (isMlpDivision) {
+              const existingRosterCount = await TeamPlayer.count({
+                where: { teamId: team.id },
+                transaction: t,
+              });
+              if (existingRosterCount >= 6) {
+                await registration.destroy({ transaction: t });
+                errors.push({
+                  row: rowNum,
+                  reason: `MLP team "${teamName}" cannot have more than 6 players`,
+                });
+                continue;
+              }
+            }
             await TeamPlayer.findOrCreate({
               where: { playerId: player.id, teamId: team.id },
               defaults: {
-                role: String(row.role || "starter").trim().toLowerCase(),
+                role: resolveBulkUploadTeamRole(row.role),
               },
               transaction: t,
             });
-            if (/mlp/i.test(eventName)) {
-              const mlpErr = await validateMlpTeamRoster(team.id, t);
-              if (mlpErr) {
-                errors.push({ row: rowNum, reason: mlpErr });
-                continue;
-              }
+            if (isMlpDivision) {
+              const roster = await summarizeMlpTeamRoster(team.id, t);
+              await team.update({ isComplete: roster.isComplete }, { transaction: t });
             }
           }
 
