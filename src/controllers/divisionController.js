@@ -326,6 +326,32 @@ const resolveBulkUploadPhone = (row) => {
   return "+10000000000";
 };
 
+const normalizePhoneNumber = (phone) => {
+  const trimmed = String(phone || "").trim();
+  if (trimmed && /^\+?[0-9\s-()]{7,25}$/.test(trimmed)) return trimmed;
+  return "+10000000000";
+};
+
+const mapSequelizeError = (error) => {
+  if (error?.name === "SequelizeUniqueConstraintError") {
+    const field = error.errors?.[0]?.path || "field";
+    return { status: 400, message: `That ${field} is already in use` };
+  }
+  if (error?.name === "SequelizeValidationError") {
+    return {
+      status: 400,
+      message: error.errors?.[0]?.message || error.message || "Validation failed",
+    };
+  }
+  if (error?.status) {
+    return { status: error.status, message: error.message };
+  }
+  return {
+    status: 500,
+    message: error?.message || "Failed to update registration",
+  };
+};
+
 const partnerMatches = (row, other) => {
   const partner = String(row.partner || "").trim().toLowerCase();
   if (!partner || partner === "-") return false;
@@ -1198,8 +1224,9 @@ const safeRollback = async (transaction) => {
 };
 
 export const updateRegistration = async (req, res) => {
-  const t = await sequelize.transaction();
+  let t;
   try {
+    t = await sequelize.transaction();
     const tournamentId = Number(req.params.tournamentId);
     const registrationId = Number(req.params.registrationId);
     const body = req.body;
@@ -1213,14 +1240,14 @@ export const updateRegistration = async (req, res) => {
       });
     }
 
-    const tournament = await assertHostTournament(tournamentId, req.user.id);
-
-    if (["ongoing", "completed"].includes(tournament.status)) {
+    try {
+      await assertHostTournament(tournamentId, req.user.id);
+    } catch (accessError) {
       await safeRollback(t);
-      return res.status(400).json({
-        code: 400,
+      return res.status(accessError.status || 404).json({
+        code: accessError.status || 404,
         error: true,
-        message: "Cannot edit registrations after the tournament has started",
+        message: accessError.message || "Tournament not found or access denied",
       });
     }
 
@@ -1238,7 +1265,20 @@ export const updateRegistration = async (req, res) => {
       });
     }
 
-    const user = reg.User;
+    let user = reg.User;
+    if (!user) {
+      user = await User.findByPk(reg.playerId, { transaction: t });
+    }
+    if (!user) {
+      await safeRollback(t);
+      return res.status(404).json({
+        code: 404,
+        error: true,
+        message: "Player account not found for this registration",
+      });
+    }
+
+    const previousGender = user.gender;
     const {
       firstname,
       lastname,
@@ -1254,19 +1294,42 @@ export const updateRegistration = async (req, res) => {
       rosterNumber,
       playerRole,
       status,
+      paymentStatus,
+      checkInStatus,
       teamId,
     } = body;
 
     if (firstname !== undefined) user.firstname = String(firstname).trim();
     if (lastname !== undefined) user.lastname = String(lastname).trim();
-    if (email !== undefined) user.email = String(email).trim().toLowerCase();
-    if (phoneNumber !== undefined) user.phoneNumber = String(phoneNumber).trim();
+    if (email !== undefined) {
+      const normalizedEmail = String(email).trim().toLowerCase();
+      const emailTaken = await User.findOne({
+        where: { email: normalizedEmail, id: { [Op.ne]: user.id } },
+        transaction: t,
+      });
+      if (emailTaken) {
+        await safeRollback(t);
+        return res.status(400).json({
+          code: 400,
+          error: true,
+          message: "Email is already in use by another player",
+        });
+      }
+      user.email = normalizedEmail;
+    }
+    if (phoneNumber !== undefined) {
+      user.phoneNumber = normalizePhoneNumber(phoneNumber);
+    }
     if (age !== undefined) user.age = Number(age) || user.age;
     if (gender !== undefined) user.gender = gender;
     if (duprId !== undefined) user.duprId = String(duprId).trim() || null;
     if (duprRating !== undefined) {
-      const duprVal = parseDuprRating(duprRating);
-      if (duprVal !== null) user.duprRating = duprVal;
+      if (duprRating === null || duprRating === "") {
+        user.duprRating = null;
+      } else {
+        const duprVal = parseDuprRating(duprRating);
+        if (duprVal !== null) user.duprRating = duprVal;
+      }
     }
     await user.save({ transaction: t });
 
@@ -1282,14 +1345,6 @@ export const updateRegistration = async (req, res) => {
           code: 400,
           error: true,
           message: "Invalid division",
-        });
-      }
-      if (bracket.isPoolStarted) {
-        await safeRollback(t);
-        return res.status(400).json({
-          code: 400,
-          error: true,
-          message: "Cannot move player — division pool play has started",
         });
       }
       const dup = await PlayerRegistration.findOne({
@@ -1325,6 +1380,7 @@ export const updateRegistration = async (req, res) => {
         });
       }
       reg.bracketId = targetBracketId;
+      reg.division = bracket.name;
     }
 
     if (clubName !== undefined) {
@@ -1337,8 +1393,19 @@ export const updateRegistration = async (req, res) => {
       reg.playerRole = String(playerRole).trim().toLowerCase() || null;
     }
     if (status !== undefined) reg.status = status;
+    if (checkInStatus !== undefined) reg.checkInStatus = checkInStatus;
 
     await reg.save({ transaction: t });
+
+    if (paymentStatus !== undefined) {
+      await applyPaymentStatusToRegistration(
+        reg,
+        paymentStatus,
+        true,
+        tournamentId,
+        t
+      );
+    }
 
     if (partner !== undefined) {
       const partnerRaw = String(partner || "").trim();
@@ -1421,7 +1488,10 @@ export const updateRegistration = async (req, res) => {
           });
         }
       }
-    } else if (gender !== undefined) {
+    } else if (
+      gender !== undefined &&
+      String(gender).toLowerCase() !== String(previousGender || "").toLowerCase()
+    ) {
       const teamsInBracket = await Team.findAll({
         where: { tournamentId, bracketId: reg.bracketId },
         attributes: ["id"],
@@ -1457,10 +1527,11 @@ export const updateRegistration = async (req, res) => {
     });
   } catch (error) {
     await safeRollback(t);
-    res.status(error.status || 500).json({
-      code: error.status || 500,
+    const mapped = mapSequelizeError(error);
+    res.status(mapped.status).json({
+      code: mapped.status,
       error: true,
-      message: error.message || "Failed to update registration",
+      message: mapped.message,
     });
   }
 };

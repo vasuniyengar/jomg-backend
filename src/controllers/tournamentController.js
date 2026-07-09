@@ -631,16 +631,6 @@ const updatingTournamentById = async (req, res) => {
       });
     }
 
-    if (["ongoing", "completed"].includes(tournament.status)) {
-      await t.rollback();
-      return res.status(404).json({
-        error: true,
-        code: 404,
-        message:
-          "Tournament completed or ongoing.Not have access to edit Tournament.",
-      });
-    }
-
     // if (!bracketId) {
     //   await t.rollback();
     //   return res.status(400).json({
