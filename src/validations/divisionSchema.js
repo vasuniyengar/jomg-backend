@@ -82,13 +82,17 @@ const registrationPatchSchema = Joi.object({
   bracketId: Joi.number().integer().positive().optional(),
   clubName: Joi.string().max(120).allow("", null).optional(),
   partner: Joi.string().max(120).allow("", null).optional(),
-  duprRating: Joi.alternatives().try(Joi.number(), Joi.string()).optional(),
+  duprRating: Joi.alternatives()
+    .try(Joi.number(), Joi.string(), Joi.valid(null))
+    .optional(),
   duprId: Joi.string().max(64).allow("", null).optional(),
   rosterNumber: Joi.string().max(32).allow("", null).optional(),
   playerRole: Joi.string().max(32).allow("", null).optional(),
   status: Joi.string()
     .valid("registered", "completed", "withdraw", "not_registered")
     .optional(),
+  paymentStatus: Joi.string().valid("paid", "unpaid", "refunded").optional(),
+  checkInStatus: Joi.string().valid("not_checked_in", "checked_in").optional(),
   teamId: Joi.number().integer().positive().allow(null).optional(),
 }).min(1);
 
