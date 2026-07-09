@@ -324,6 +324,12 @@ function buildInfoBar(tournament, publicBrackets, clubCount) {
   return items;
 }
 
+function formatWeekday(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(`${dateStr}T12:00:00`);
+  return d.toLocaleDateString("en-US", { weekday: "short" });
+}
+
 function groupDivisionsByDay(brackets, tournament, settings) {
   const byDate = new Map();
   for (const bracket of brackets) {
@@ -343,7 +349,7 @@ function groupDivisionsByDay(brackets, tournament, settings) {
       return {
         id: dateKey,
         label: formatDateLabel(dateKey),
-        subtitle: `Sat · ${divisions.length} division${divisions.length === 1 ? "" : "s"}`,
+        subtitle: `${formatWeekday(dateKey)} · ${divisions.length} division${divisions.length === 1 ? "" : "s"}`,
         divisions,
       };
     })

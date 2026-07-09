@@ -45,8 +45,8 @@ export async function linkBulkUploadPartners(batchRegs, tournamentId, transactio
         transaction,
       });
       const existing = regs.find((r) => {
-        if (r.playerId === item.playerId) return false;
-        const nm = `${r.User.firstname} ${r.User.lastname}`;
+        if (r.playerId === item.playerId || !r.User) return false;
+        const nm = `${r.User.firstname} ${r.User.lastname}`.trim();
         return partnerMatchesRow(item.row, { name: nm, email: r.User.email });
       });
       if (existing) {

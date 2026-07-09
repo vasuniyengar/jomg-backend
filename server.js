@@ -76,22 +76,36 @@ const isPrivateLanOrigin = (origin) =>
     origin
   );
 
-app.use(helmet());
+const isOriginAllowed = (origin) => {
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  if (isDev && (isLocalOrigin(origin) || isPrivateLanOrigin(origin))) return true;
+  return false;
+};
+
+const applyCorsHeaders = (req, res) => {
+  const origin = req.headers.origin;
+  if (origin && isOriginAllowed(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Vary", "Origin");
+  }
+};
+
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) {
-        return callback(null, true);
-      }
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-      if (isDev && (isLocalOrigin(origin) || isPrivateLanOrigin(origin))) {
-        return callback(null, true);
-      }
-      return callback(new Error("CORS origin denied"));
+      callback(null, isOriginAllowed(origin));
     },
     credentials: true,
+    methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    optionsSuccessStatus: 204,
   })
 );
 
@@ -145,7 +159,27 @@ app.use("/api/players", playerRegistrationRoutes);
 
 app.use("/api/host", hostRoutes);
 
-app.use(errorHandler);
+app.use((req, res) => {
+  res.status(404).json({
+    code: 404,
+    error: true,
+    message: `Route not found: ${req.method} ${req.originalUrl}`,
+  });
+});
+
+app.use((err, req, res, next) => {
+  applyCorsHeaders(req, res);
+
+  if (err instanceof SyntaxError && err.status === 400 && "body" in err) {
+    return res.status(400).json({
+      code: 400,
+      error: true,
+      message: "Invalid JSON request body",
+    });
+  }
+
+  return errorHandler(err, req, res, next);
+});
 
 let httpServer;
 

@@ -93,25 +93,6 @@ const addPlayerByHost = async (req, res) => {
       });
     }
 
-    if (["ongoing", "completed"].includes(tournament.status)) {
-      await t.rollback();
-      return res.status(400).json({
-        error: true,
-        code: 400,
-        message: "Registration closed.Tournament is ongoing or completed",
-      });
-    }
-
-    if (bracket.isPoolStarted) {
-      await t.rollback();
-      return res.status(400).json({
-        error: true,
-        code: 400,
-        message:
-          "Registration for this bracket is closed.Bracket is ongoing or completed",
-      });
-    }
-
     const eventName = bracket?.Event?.eventName?.toLowerCase() || "";
 
     const existingRegistrations = await PlayerRegistration.count({
