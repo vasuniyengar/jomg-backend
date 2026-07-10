@@ -93,11 +93,15 @@ function buildDivisionLabel(bracket) {
 
 function buildDivisionSub(bracket) {
   const parts = [];
-  if (bracket.maxRating != null) {
-    parts.push(`Team cap ${Number(bracket.maxRating).toFixed(2)}`);
+  const cfg = parseScoringConfig(bracket) || {};
+  const teamCap = cfg.duprCombinedMax;
+  const maxIndividual = bracket.maxRating;
+
+  if (teamCap != null && teamCap !== "" && Number(teamCap) > 0) {
+    parts.push(`Team cap ${Number(teamCap).toFixed(2)}`);
   }
-  if (bracket.minRating != null) {
-    parts.push(`Max individual ${Number(bracket.minRating).toFixed(2)}`);
+  if (maxIndividual != null && maxIndividual !== "" && Number(maxIndividual) > 0) {
+    parts.push(`Max individual ${Number(maxIndividual).toFixed(2)}`);
   }
   return parts.join(" · ") || "";
 }
@@ -118,6 +122,60 @@ function mapTeamDupr(players) {
   return players
     .reduce((sum, p) => sum + (Number(p.dupr) || 0), 0)
     .toFixed(1);
+}
+
+const MLP_STARTER_COUNT = 4;
+
+function normalizeRosterRole(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
+}
+
+function isSubRosterRole(role) {
+  return ["bench", "sub", "substitute", "alternate"].includes(role);
+}
+
+function isStarterRosterRole(role) {
+  return ["starter", "captain", "player", "partner", "host"].includes(role);
+}
+
+/**
+ * Split roster into starters vs subs.
+ * Prefer explicit TeamPlayer.role / registration playerRole; for MLP
+ * rosters without roles, keep the first 4 as starters.
+ */
+function splitTeamRoster(teamPlayers, roleByPlayerId = new Map()) {
+  const ordered = [...(teamPlayers || [])].sort((a, b) => a.id - b.id);
+
+  const marked = ordered.map((tp) => {
+    const teamRole = normalizeRosterRole(tp.role);
+    const regRole = normalizeRosterRole(roleByPlayerId.get(tp.playerId));
+    const role = isSubRosterRole(teamRole) || isStarterRosterRole(teamRole)
+      ? teamRole
+      : regRole;
+    return { tp, role, isSub: isSubRosterRole(role) };
+  });
+
+  const hasExplicitRoles = marked.some(
+    ({ role }) => isSubRosterRole(role) || role === "starter" || role === "captain"
+  );
+
+  let starters;
+  let subs;
+
+  if (hasExplicitRoles) {
+    starters = marked.filter((entry) => !entry.isSub).map((entry) => entry.tp);
+    subs = marked.filter((entry) => entry.isSub).map((entry) => entry.tp);
+  } else if (ordered.length > MLP_STARTER_COUNT) {
+    starters = ordered.slice(0, MLP_STARTER_COUNT);
+    subs = ordered.slice(MLP_STARTER_COUNT);
+  } else {
+    starters = ordered;
+    subs = [];
+  }
+
+  return { starters, subs };
 }
 
 function isBracketPublic(bracket, showDivisionsPublicly) {
@@ -441,11 +499,41 @@ async function fetchTeamsForBracket(tournamentId, bracketId) {
     order: [["id", "ASC"]],
   });
 
+  const playerIds = [
+    ...new Set(
+      teams.flatMap((team) => (team.TeamPlayers || []).map((tp) => tp.playerId)).filter(Boolean)
+    ),
+  ];
+
+  const roleByPlayerId = new Map();
+  if (playerIds.length) {
+    const registrations = await PlayerRegistration.findAll({
+      where: {
+        tournamentId,
+        bracketId,
+        playerId: { [Op.in]: playerIds },
+      },
+      attributes: ["playerId", "playerRole"],
+    });
+    for (const reg of registrations) {
+      if (reg.playerRole) roleByPlayerId.set(reg.playerId, reg.playerRole);
+    }
+  }
+
   const mapped = teams.map((team, index) => {
-    const players = team.TeamPlayers.filter((tp) => !tp.isSubstitute).map((tp) =>
-      sanitizePlayer(tp.User, { captain: Boolean(tp.isCaptain) })
-    ).filter(Boolean);
-    const subs = team.TeamPlayers.filter((tp) => tp.isSubstitute)
+    const { starters, subs: subSlots } = splitTeamRoster(
+      team.TeamPlayers,
+      roleByPlayerId
+    );
+    const players = starters
+      .map((tp) =>
+        sanitizePlayer(tp.User, {
+          captain: normalizeRosterRole(tp.role) === "captain"
+            || normalizeRosterRole(roleByPlayerId.get(tp.playerId)) === "captain",
+        })
+      )
+      .filter(Boolean);
+    const subs = subSlots
       .map((tp) => sanitizePlayer(tp.User, { sub: true }))
       .filter(Boolean);
     const seed = team.PoolTeamStat?.playoffSeed || index + 1;
@@ -454,6 +542,7 @@ async function fetchTeamsForBracket(tournamentId, bracketId) {
       initials: team.teamName?.slice(0, 2)?.toUpperCase() || "TM",
       name: team.teamName,
       location: "",
+      // Team DUPR is starters only — subs never count toward the total.
       teamDupr: mapTeamDupr(players),
       players,
       subs,

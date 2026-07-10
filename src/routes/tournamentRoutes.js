@@ -190,6 +190,13 @@ router.patch(
   divisionController.updateRegistration
 );
 
+router.delete(
+  "/:tournamentId/registrations/:registrationId",
+  middleware.authenticate,
+  middleware.authorizeRole(ORGANIZER_ROLES),
+  divisionController.deleteRegistration
+);
+
 router.patch(
   "/:tournamentId/registrations/:registrationId/payment",
   middleware.authenticate,

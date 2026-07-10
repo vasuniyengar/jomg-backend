@@ -1657,6 +1657,118 @@ export const bulkUpdateRegistrationPayments = async (req, res) => {
   }
 };
 
+export const deleteRegistration = async (req, res) => {
+  let t;
+  try {
+    t = await sequelize.transaction();
+    const tournamentId = Number(req.params.tournamentId);
+    const registrationId = Number(req.params.registrationId);
+
+    if (!Number.isInteger(tournamentId) || !Number.isInteger(registrationId)) {
+      await safeRollback(t);
+      return res.status(400).json({
+        code: 400,
+        error: true,
+        message: "Invalid tournament or registration id",
+      });
+    }
+
+    try {
+      await assertHostTournament(tournamentId, req.user.id);
+    } catch (accessError) {
+      await safeRollback(t);
+      return res.status(accessError.status || 404).json({
+        code: accessError.status || 404,
+        error: true,
+        message: accessError.message || "Tournament not found or access denied",
+      });
+    }
+
+    const reg = await PlayerRegistration.findOne({
+      where: { id: registrationId, tournamentId },
+      include: [{ model: User, attributes: ["id", "firstname", "lastname"] }],
+      transaction: t,
+    });
+    if (!reg) {
+      await safeRollback(t);
+      return res.status(404).json({
+        code: 404,
+        error: true,
+        message: "Registration not found",
+      });
+    }
+
+    const bracket = await Bracket.findByPk(reg.bracketId, { transaction: t });
+    if (bracket?.poolStarted) {
+      await safeRollback(t);
+      return res.status(400).json({
+        code: 400,
+        error: true,
+        message:
+          "Cannot delete player after the division draw has been published. Unpublish the draw first.",
+      });
+    }
+
+    // Clear partner links that point at this player
+    await PlayerRegistration.update(
+      { partnerId: null },
+      {
+        where: {
+          tournamentId,
+          bracketId: reg.bracketId,
+          partnerId: reg.playerId,
+        },
+        transaction: t,
+      }
+    );
+
+    const teamsInBracket = await Team.findAll({
+      where: { tournamentId, bracketId: reg.bracketId },
+      attributes: ["id"],
+      transaction: t,
+    });
+    const teamIds = teamsInBracket.map((tm) => tm.id);
+    if (teamIds.length) {
+      await TeamPlayer.destroy({
+        where: { playerId: reg.playerId, teamId: { [Op.in]: teamIds } },
+        transaction: t,
+      });
+
+      // Remove empty teams left behind
+      for (const teamId of teamIds) {
+        const remaining = await TeamPlayer.count({
+          where: { teamId },
+          transaction: t,
+        });
+        if (remaining === 0) {
+          await Team.destroy({ where: { id: teamId }, transaction: t });
+        }
+      }
+    }
+
+    await reg.destroy({ transaction: t });
+    await t.commit();
+
+    const playerName = reg.User
+      ? `${reg.User.firstname || ""} ${reg.User.lastname || ""}`.trim()
+      : "Player";
+
+    return res.status(200).json({
+      code: 200,
+      error: false,
+      message: `${playerName || "Player"} removed from this division`,
+      data: { registrationId },
+    });
+  } catch (error) {
+    await safeRollback(t);
+    return res.status(error.status || 500).json({
+      code: error.status || 500,
+      error: true,
+      message: error.message || "Failed to delete player registration",
+    });
+  }
+};
+
 export default {
   getBracketMeta,
   listDivisions,
@@ -1666,6 +1778,7 @@ export default {
   bulkUploadPlayers,
   resendPaymentEmails,
   updateRegistration,
+  deleteRegistration,
   updateRegistrationPayment,
   bulkUpdateRegistrationPayments,
 };
