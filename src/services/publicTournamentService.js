@@ -33,7 +33,10 @@ function activeTeamWhere(tournamentId, bracketId) {
   return {
     tournamentId,
     bracketId,
-    status: { [Op.notIn]: INACTIVE_TEAM_STATUSES },
+    [Op.or]: [
+      { status: { [Op.notIn]: INACTIVE_TEAM_STATUSES } },
+      { status: null },
+    ],
   };
 }
 
@@ -207,41 +210,6 @@ async function countDistinctClubs(tournamentId) {
   });
 }
 
-async function mapPreviewTeam(tournamentId, bracketId) {
-  const teams = await Team.findAll({
-    where: activeTeamWhere(tournamentId, bracketId),
-    include: [
-      {
-        model: TeamPlayer,
-        as: "TeamPlayers",
-        include: [{ model: User, as: "User", attributes: ["firstname", "lastname", "duprRating"] }],
-      },
-      { model: PoolTeamStats, as: "PoolTeamStat", required: false },
-    ],
-    order: [["id", "ASC"]],
-  });
-  const team = teams.find((entry) => entry.TeamPlayers?.length) || teams[0];
-  if (!team) return null;
-
-  const players = team.TeamPlayers.map((tp) =>
-    sanitizePlayer(tp.User, { captain: tp.isCaptain })
-  ).filter(Boolean);
-  const subs = team.TeamPlayers.filter((tp) => tp.isSubstitute)
-    .map((tp) => sanitizePlayer(tp.User, { sub: true }))
-    .filter(Boolean);
-  const starters = players.filter((p) => !subs.find((s) => s.firstName === p.firstName));
-
-  return {
-    seed: team.PoolTeamStat?.playoffSeed || 1,
-    initials: initials(team.teamName?.[0], team.teamName?.[1]) || team.teamName?.slice(0, 2)?.toUpperCase(),
-    name: team.teamName,
-    location: "",
-    teamDupr: mapTeamDupr(starters.length ? starters : players),
-    players: starters.length ? starters : players,
-    subs,
-  };
-}
-
 async function mapDivisionSummary(bracket, tournament, settings) {
   const teamWhere = activeTeamWhere(tournament.id, bracket.id);
   const teamCount = await Team.count({ where: teamWhere });
@@ -256,7 +224,7 @@ async function mapDivisionSummary(bracket, tournament, settings) {
     ],
   });
   const seeding = settings.playRules?.seedingMethod || "team DUPR";
-  const previewTeam = teamCount > 0 ? await mapPreviewTeam(tournament.id, bracket.id) : null;
+  const teams = teamCount > 0 ? await fetchTeamsForBracket(tournament.id, bracket.id) : [];
 
   return {
     id: String(bracket.id),
@@ -267,7 +235,8 @@ async function mapDivisionSummary(bracket, tournament, settings) {
     playerCount,
     barLabel: `${teamCount} teams · seeded by ${seeding}`,
     hasDetail: teamCount > 0 || Boolean(bracket.poolStarted),
-    previewTeam,
+    previewTeam: teams[0] || null,
+    teams,
   };
 }
 
@@ -469,13 +438,10 @@ async function fetchTeamsForBracket(tournamentId, bracketId) {
         include: [{ model: User, as: "User", attributes: ["firstname", "lastname", "duprRating"] }],
       },
     ],
-    order: [
-      [{ model: PoolTeamStats, as: "PoolTeamStat" }, "playoffSeed", "ASC"],
-      ["id", "ASC"],
-    ],
+    order: [["id", "ASC"]],
   });
 
-  return teams.map((team, index) => {
+  const mapped = teams.map((team, index) => {
     const players = team.TeamPlayers.filter((tp) => !tp.isSubstitute).map((tp) =>
       sanitizePlayer(tp.User, { captain: Boolean(tp.isCaptain) })
     ).filter(Boolean);
@@ -493,6 +459,8 @@ async function fetchTeamsForBracket(tournamentId, bracketId) {
       subs,
     };
   });
+
+  return mapped.sort((a, b) => a.seed - b.seed || String(a.name).localeCompare(String(b.name)));
 }
 
 async function fetchPoolsForBracket(tournamentId, bracketId) {
