@@ -11,7 +11,11 @@ const {
   PlayerRegistration,
   Event,
   User,
+  PoolTeam,
+  PoolTeamStats,
 } = models;
+
+const INACTIVE_TEAM_STATUSES = ["waitlist", "withdrawn", "forfeited"];
 
 const generateTeams = async (req, res) => {
   const t = await sequelize.transaction();
@@ -813,4 +817,68 @@ const createTeamFromPlayers = async (req, res) => {
   }
 };
 
-export default { generateTeams, createTeamFromPlayers, updateTeamStatus };
+const deleteTeam = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const { tournamentId, bracketId, teamId } = req.params;
+
+    const bracket = await Bracket.findByPk(bracketId, { transaction: t });
+    if (!bracket || String(bracket.tournamentId) !== String(tournamentId)) {
+      await t.rollback();
+      return res.status(404).json({
+        error: true,
+        code: 404,
+        message: "bracket not found!",
+      });
+    }
+
+    if (bracket.poolStarted) {
+      await t.rollback();
+      return res.status(400).json({
+        error: true,
+        code: 400,
+        message: "Bracket is published — roster is locked",
+      });
+    }
+
+    const team = await Team.findOne({
+      where: { id: teamId, tournamentId, bracketId },
+      transaction: t,
+    });
+    if (!team) {
+      await t.rollback();
+      return res.status(404).json({
+        error: true,
+        code: 404,
+        message: "Team not found in this division",
+      });
+    }
+
+    await TeamPlayer.destroy({ where: { teamId: team.id }, transaction: t });
+    await PoolTeamStats.destroy({ where: { teamId: team.id }, transaction: t });
+    await PoolTeam.destroy({ where: { teamId: team.id }, transaction: t });
+    await team.destroy({ transaction: t });
+
+    await t.commit();
+
+    return res.status(200).json({
+      error: false,
+      code: 200,
+      message: "Team removed",
+    });
+  } catch (error) {
+    await t.rollback();
+    return res.status(500).json({
+      error: true,
+      code: 500,
+      message: error.message,
+    });
+  }
+};
+
+export default {
+  generateTeams,
+  createTeamFromPlayers,
+  updateTeamStatus,
+  deleteTeam,
+};

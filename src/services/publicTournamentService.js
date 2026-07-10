@@ -27,6 +27,16 @@ const {
 
 const BADGE = "CLUB VS CLUB";
 
+const INACTIVE_TEAM_STATUSES = ["waitlist", "withdrawn", "forfeited"];
+
+function activeTeamWhere(tournamentId, bracketId) {
+  return {
+    tournamentId,
+    bracketId,
+    status: { [Op.notIn]: INACTIVE_TEAM_STATUSES },
+  };
+}
+
 function initials(first, last) {
   return `${(first?.[0] || "").toUpperCase()}${(last?.[0] || "").toUpperCase()}`;
 }
@@ -199,7 +209,7 @@ async function countDistinctClubs(tournamentId) {
 
 async function mapPreviewTeam(tournamentId, bracketId) {
   const teams = await Team.findAll({
-    where: { tournamentId, bracketId },
+    where: activeTeamWhere(tournamentId, bracketId),
     include: [
       {
         model: TeamPlayer,
@@ -209,9 +219,8 @@ async function mapPreviewTeam(tournamentId, bracketId) {
       { model: PoolTeamStats, as: "PoolTeamStat", required: false },
     ],
     order: [["id", "ASC"]],
-    limit: 1,
   });
-  const team = teams[0];
+  const team = teams.find((entry) => entry.TeamPlayers?.length) || teams[0];
   if (!team) return null;
 
   const players = team.TeamPlayers.map((tp) =>
@@ -234,13 +243,14 @@ async function mapPreviewTeam(tournamentId, bracketId) {
 }
 
 async function mapDivisionSummary(bracket, tournament, settings) {
-  const teamCount = await Team.count({ where: { bracketId: bracket.id, tournamentId: tournament.id } });
+  const teamWhere = activeTeamWhere(tournament.id, bracket.id);
+  const teamCount = await Team.count({ where: teamWhere });
   const playerCount = await TeamPlayer.count({
     include: [
       {
         model: Team,
         as: "Team",
-        where: { bracketId: bracket.id, tournamentId: tournament.id },
+        where: teamWhere,
         required: true,
       },
     ],
@@ -450,7 +460,7 @@ export async function buildPublicTournamentPage(slug, { preview = false } = {}) 
 
 async function fetchTeamsForBracket(tournamentId, bracketId) {
   const teams = await Team.findAll({
-    where: { tournamentId, bracketId },
+    where: activeTeamWhere(tournamentId, bracketId),
     include: [
       { model: PoolTeamStats, as: "PoolTeamStat", required: false },
       {
