@@ -60,6 +60,13 @@ router.patch(
   teamPlayersController.updateTeamStatus
 );
 
+router.delete(
+  "/tournaments/:tournamentId/brackets/:bracketId/teams/:teamId",
+  middlewares.authenticate,
+  middlewares.authorizeRole(ORGANIZER_ROLES),
+  teamPlayersController.deleteTeam
+);
+
 router.get(
   "/tournaments/:tournamentId/brackets/:bracketId/registered-players",
   middlewares.authenticate,
