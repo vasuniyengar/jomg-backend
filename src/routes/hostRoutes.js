@@ -59,6 +59,12 @@ router.patch(
   middlewares.authorizeRole(ORGANIZER_ROLES),
   teamPlayersController.updateTeamStatus
 );
+router.patch(
+  "/tournaments/:tournamentId/brackets/:bracketId/teams/:teamId/team-name",
+  middlewares.authenticate,
+  middlewares.authorizeRole(ORGANIZER_ROLES),
+  teamPlayersController.updateTeamName
+);
 
 router.delete(
   "/tournaments/:tournamentId/brackets/:bracketId/teams/:teamId",
