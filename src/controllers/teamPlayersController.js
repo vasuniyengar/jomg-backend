@@ -875,10 +875,85 @@ const deleteTeam = async (req, res) => {
     });
   }
 };
+const updateTeamName = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const { tournamentId, bracketId, teamId } = req.params;
+    const { teamName } = req.body || {};
+
+    if (typeof teamName !== "string" || !teamName.trim()) {
+      await t.rollback();
+      return res.status(400).json({
+        error: true,
+        code: 400,
+        message: "teamName must be a non-empty string",
+      });
+    }
+
+    const bracket = await Bracket.findByPk(bracketId, { transaction: t });
+    if (!bracket || String(bracket.tournamentId) !== String(tournamentId)) {
+      await t.rollback();
+      return res.status(404).json({
+        error: true,
+        code: 404,
+        message: "bracket not found!",
+      });
+    }
+
+    const team = await Team.findOne({
+      where: { id: teamId, tournamentId, bracketId },
+      transaction: t,
+    });
+    if (!team) {
+      await t.rollback();
+      return res.status(404).json({
+        error: true,
+        code: 404,
+        message: "Team not found in this division",
+      });
+    }
+
+    await team.update({ teamName: teamName.trim() }, { transaction: t });
+
+    const updated = await Team.findByPk(team.id, {
+      include: [
+        {
+          model: TeamPlayer,
+          as: "TeamPlayers",
+          include: [
+            {
+              model: User,
+              as: "User",
+              attributes: ["id", "firstname", "lastname", "email", "duprRating", "gender"],
+            },
+          ],
+        },
+      ],
+      transaction: t,
+    });
+
+    await t.commit();
+
+    return res.status(200).json({
+      error: false,
+      code: 200,
+      message: "Team name updated",
+      data: formatTeamResponse(updated),
+    });
+  } catch (error) {
+    await t.rollback();
+    return res.status(500).json({
+      error: true,
+      code: 500,
+      message: error.message,
+    });
+  }
+};
 
 export default {
   generateTeams,
   createTeamFromPlayers,
   updateTeamStatus,
   deleteTeam,
+  updateTeamName,
 };
