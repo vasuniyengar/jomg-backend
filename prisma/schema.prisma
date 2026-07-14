@@ -224,22 +224,23 @@ model Bracket {
 }
 
 model Team {
-  id            Int            @id @default(autoincrement())
-  teamName      String?
-  bracketId     Int
-  tournamentId  Int
-  status        String         @default("registered")
-  paymentStatus String?        @default("paid")
-  isComplete    Boolean
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  bracket       Bracket        @relation(fields: [bracketId], references: [id], onDelete: Cascade)
-  tournament    Tournament     @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  players       TeamPlayer[]
-  poolTeams     PoolTeam[]
-  stats         PoolTeamStats[]
-  matchesAsTeam1 Match[]       @relation("MatchTeam1")
-  matchesAsTeam2 Match[]       @relation("MatchTeam2")
+  id              Int            @id @default(autoincrement())
+  teamName        String?
+  bracketId       Int
+  tournamentId    Int
+  status          String         @default("registered")
+  paymentStatus   String?        @default("paid")
+  isComplete      Boolean
+  standingsPoints Int            @default(0)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  bracket         Bracket        @relation(fields: [bracketId], references: [id], onDelete: Cascade)
+  tournament      Tournament     @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  players         TeamPlayer[]
+  poolTeams       PoolTeam[]
+  stats           PoolTeamStats[]
+  matchesAsTeam1  Match[]        @relation("MatchTeam1")
+  matchesAsTeam2  Match[]        @relation("MatchTeam2")
 
   @@map("teams")
 }
@@ -350,6 +351,9 @@ model Match {
   scoreTeam1   Int?     @default(0)
   scoreTeam2   Int?     @default(0)
   type         String?  @default("pool")
+  /// 1=WD, 2=MD, 3=X1, 4=X2, 5=Dream Breaker
+  gameType     Int?
+  courtAssignment String?
   winnerTeamId Int?
   loserTeamId  Int?
   createdAt    DateTime @default(now())
@@ -359,6 +363,7 @@ model Match {
   team1        Team     @relation("MatchTeam1", fields: [team1Id], references: [id], onDelete: Restrict)
   team2        Team     @relation("MatchTeam2", fields: [team2Id], references: [id], onDelete: Restrict)
 
+  @@index([poolId, roundId, team1Id, team2Id])
   @@map("Matches")
 }
 

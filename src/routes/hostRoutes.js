@@ -11,6 +11,8 @@ import middlewares from "../middlewares/authenticate.js";
 import bracketController from "../controllers/bracketController.js";
 
 import addPlayerValidations from "../validations/addPlayerSchema.js";
+import roundRobinController from "../controllers/roundRobinController.js";
+
 const ORGANIZER_ROLES = ["organizer", "super_admin", "host"];
 
 router.put("/checkin", hostController.checkInPlayerForEvent);
@@ -64,6 +66,19 @@ router.patch(
   middlewares.authenticate,
   middlewares.authorizeRole(ORGANIZER_ROLES),
   teamPlayersController.updateTeamName
+);
+router.patch(
+  "/tournaments/:tournamentId/brackets/:bracketId/publish",
+  middlewares.authenticate,
+  middlewares.authorizeRole(ORGANIZER_ROLES),
+  roundRobinController.publishRoundRobin
+);
+
+router.patch(
+  "/tournaments/:tournamentId/brackets/:bracketId/unpublish",
+  middlewares.authenticate,
+  middlewares.authorizeRole(ORGANIZER_ROLES),
+  roundRobinController.unpublishRoundRobin
 );
 
 router.delete(
@@ -169,6 +184,13 @@ router.put(
   middlewares.authenticate,
   middlewares.authorizeRole(ORGANIZER_ROLES),
   hostController.resetMatchScore
+);
+
+router.put(
+  "/matches/:matchId/court-assignment",
+  middlewares.authenticate,
+  middlewares.authorizeRole(ORGANIZER_ROLES),
+  hostController.updateCourtAssignment
 );
 
 router.get(

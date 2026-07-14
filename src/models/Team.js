@@ -42,6 +42,11 @@ const Team = sequelize.define(
       type: DataTypes.BOOLEAN,
       allowNull: false,
     },
+    standingsPoints: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
   },
   {
     tableName: "teams",
