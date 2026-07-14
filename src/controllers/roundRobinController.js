@@ -1,4 +1,5 @@
 import prisma from "../config/prisma.js";
+import { expandPairingToSeriesGames } from "../utils/seriesGames.js";
 
 async function assertHostTournament(tournamentId, hostId) {
   const tournament = await prisma.tournament.findFirst({
@@ -488,15 +489,17 @@ if (currentPool.length > 0) {
         }
 
         try {
-          await prisma.match.createMany({
-            data: poolRounds[r].map(({ team1, team2 }) => ({
-              team1Id: team1.id,
-              team2Id: team2.id,
+          const seriesRows = poolRounds[r].flatMap(({ team1, team2 }) =>
+            expandPairingToSeriesGames({
               poolId: pool.id,
               roundId: round.id,
-              status: "not_started",
+              team1Id: team1.id,
+              team2Id: team2.id,
               type: "pool",
-            })),
+            })
+          );
+          await prisma.match.createMany({
+            data: seriesRows,
           });
         } catch (e) {
           console.error(`FAILED AT match.createMany for round ${r + 1}:`, e.message);
@@ -543,6 +546,7 @@ const getPoolsByBracket = async (req, res) => {
             orderBy: { roundNumber: "asc" },
             include: {
               matches: {
+                orderBy: [{ gameType: "asc" }, { id: "asc" }],
                 include: {
                   team1: true,
                   team2: true,
@@ -606,4 +610,149 @@ const deleteRoundRobin = async (req, res) => {
     res.status(500).json({ error: true, code: 500, message: error.message });
   }
 };
-export default { createRoundRobin, getPoolsByBracket, deleteRoundRobin };
+const publishRoundRobin = async (req, res) => {
+  try {
+    const tournamentId = Number(req.params.tournamentId);
+    const bracketId = Number(req.params.bracketId);
+
+    await assertHostTournament(tournamentId, req.user.id);
+
+    const bracket = await prisma.bracket.findFirst({
+      where: { id: bracketId, tournamentId },
+    });
+
+    if (!bracket) {
+      return res.status(404).json({
+        error: true,
+        code: 404,
+        message: "Bracket not found for this tournament",
+      });
+    }
+
+    // Get all pools for this bracket
+    const pools = await prisma.pool.findMany({
+      where: { bracketId, tournamentId },
+      select: { id: true },
+    });
+
+    const poolIds = pools.map((p) => p.id);
+
+    if (poolIds.length === 0) {
+      return res.status(404).json({
+        error: true,
+        code: 404,
+        message: "No round robin found for this bracket. Generate one before publishing.",
+      });
+    }
+
+    // Publish all matches belonging to this bracket's pools
+    let updated;
+    try {
+      updated = await prisma.match.updateMany({
+        where: { poolId: { in: poolIds } },
+        data: { publishedStatus: "published" },
+      });
+    } catch (e) {
+      console.error("FAILED AT match.updateMany (publish):", e.message);
+      throw e;
+    }
+
+    // Mark the bracket itself as published
+    let updatedBracket;
+    try {
+      updatedBracket = await prisma.bracket.update({
+        where: { id: bracketId },
+        data: { status: "published" },
+      });
+    } catch (e) {
+      console.error("FAILED AT bracket.update (publish):", e.message);
+      throw e;
+    }
+
+    res.status(200).json({
+      error: false,
+      code: 200,
+      message: "Round robin published successfully",
+      data: {
+        bracket: updatedBracket,
+        matchesPublished: updated.count,
+      },
+    });
+  } catch (error) {
+    console.error("PUBLISH ROUND ROBIN FAILED:", error.message);
+    res.status(500).json({ error: true, code: 500, message: error.message });
+  }
+};
+
+const unpublishRoundRobin = async (req, res) => {
+  try {
+    const tournamentId = Number(req.params.tournamentId);
+    const bracketId = Number(req.params.bracketId);
+
+    await assertHostTournament(tournamentId, req.user.id);
+
+    const bracket = await prisma.bracket.findFirst({
+      where: { id: bracketId, tournamentId },
+    });
+
+    if (!bracket) {
+      return res.status(404).json({
+        error: true,
+        code: 404,
+        message: "Bracket not found for this tournament",
+      });
+    }
+
+    const pools = await prisma.pool.findMany({
+      where: { bracketId, tournamentId },
+      select: { id: true },
+    });
+
+    const poolIds = pools.map((p) => p.id);
+
+    let updated = { count: 0 };
+    if (poolIds.length > 0) {
+      try {
+        updated = await prisma.match.updateMany({
+          where: { poolId: { in: poolIds } },
+          data: { publishedStatus: "unpublished" },
+        });
+      } catch (e) {
+        console.error("FAILED AT match.updateMany (unpublish):", e.message);
+        throw e;
+      }
+    }
+
+    let updatedBracket;
+    try {
+      updatedBracket = await prisma.bracket.update({
+        where: { id: bracketId },
+        data: { status: "draft" },
+      });
+    } catch (e) {
+      console.error("FAILED AT bracket.update (unpublish):", e.message);
+      throw e;
+    }
+
+    res.status(200).json({
+      error: false,
+      code: 200,
+      message: "Round robin unpublished successfully",
+      data: {
+        bracket: updatedBracket,
+        matchesUnpublished: updated.count,
+      },
+    });
+  } catch (error) {
+    console.error("UNPUBLISH ROUND ROBIN FAILED:", error.message);
+    res.status(500).json({ error: true, code: 500, message: error.message });
+  }
+};
+
+export default {
+  createRoundRobin,
+  getPoolsByBracket,
+  deleteRoundRobin,
+  publishRoundRobin,
+  unpublishRoundRobin,
+};

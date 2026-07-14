@@ -8,6 +8,11 @@ import { resolveScoringListIdForRound } from "../utils/scoringRules.js";
 import { parseDuprRating } from "../utils/parseDuprRating.js";
 import { linkBulkUploadPartners } from "../utils/linkRegistrationPartners.js";
 import {
+  expandPairingToSeriesGames,
+  isSeriesGameType,
+  seriesKey,
+} from "../utils/seriesGames.js";
+import {
   buildPaymentEmailPayload,
   buildPaymentRegistrationJob,
   computeRegistrationAmountDue,
@@ -15,6 +20,7 @@ import {
   hasPaymentInstructions,
 } from "../utils/paymentRegistrationEmail.js";
 import { validateMlpTeamRoster } from "../utils/mlpRosterValidation.js";
+import { recomputeTeamStandingsPoints } from "./standingsPointsController.js";
 
 const {
   PlayerRegistration,
@@ -1230,22 +1236,51 @@ const recomputeTeamStats = async (poolId, teamId, transaction = null) => {
     transaction,
   });
 
-  let wins = 0;
-  let losses = 0;
   let pointsFor = 0;
   let pointsAgainst = 0;
 
+  // Group into team-vs-team series (5 games each for MLP RR)
+  const series = new Map();
   for (const m of matches) {
+    const key = seriesKey(m);
+    if (!series.has(key)) series.set(key, []);
+    series.get(key).push(m);
+
     const isTeam1 = m.team1Id === teamId;
     const teamScore = isTeam1 ? m.scoreTeam1 : m.scoreTeam2;
     const oppScore = isTeam1 ? m.scoreTeam2 : m.scoreTeam1;
 
-    pointsFor += teamScore || 0;
-    pointsAgainst += oppScore || 0;
-
     if (m.status === "completed") {
-      if (teamScore > oppScore) wins++;
-      else if (teamScore < oppScore) losses++;
+      if (teamScore > oppScore) pointsFor += 1;
+      else if (teamScore < oppScore) pointsAgainst += 1;
+    }
+  }
+
+  let wins = 0;
+  let losses = 0;
+
+  for (const games of series.values()) {
+    let teamGameWins = 0;
+    let oppGameWins = 0;
+    let completedGames = 0;
+
+    for (const m of games) {
+      if (m.status !== "completed") continue;
+      completedGames += 1;
+      const isTeam1 = m.team1Id === teamId;
+      const teamScore = isTeam1 ? m.scoreTeam1 : m.scoreTeam2;
+      const oppScore = isTeam1 ? m.scoreTeam2 : m.scoreTeam1;
+      if (teamScore > oppScore) teamGameWins += 1;
+      else if (teamScore < oppScore) oppGameWins += 1;
+    }
+
+    // Series decided when a side reaches 3 game wins (incl. DB)
+    if (teamGameWins >= 3) wins += 1;
+    else if (oppGameWins >= 3) losses += 1;
+    // Legacy single-game series (only one completed game row)
+    else if (games.length === 1 && completedGames === 1) {
+      if (teamGameWins > oppGameWins) wins += 1;
+      else if (oppGameWins > teamGameWins) losses += 1;
     }
   }
 
@@ -1475,15 +1510,15 @@ const createRoundRobin = async (req, res) => {
           { transaction: t }
         );
 
-        const matches = rounds[r].map((m) => ({
-          poolId: pool.id,
-          roundId: round.id,
-          team1Id: m.home,
-          team2Id: m.away,
-          status: "not_started",
-          scoreTeam1: 0,
-          scoreTeam2: 0,
-        }));
+        const matches = rounds[r].flatMap((m) =>
+          expandPairingToSeriesGames({
+            poolId: pool.id,
+            roundId: round.id,
+            team1Id: m.home,
+            team2Id: m.away,
+            type: "pool",
+          })
+        );
 
         await Match.bulkCreate(matches, { transaction: t });
       }
@@ -1541,7 +1576,7 @@ const getPoolsWithTeams = async (req, res) => {
           include: [
             {
               model: Team,
-              attributes: ["id", "teamName"],
+              attributes: ["id", "teamName", "standingsPoints"],
               include: [
                 {
                   model: TeamPlayer,
@@ -1550,7 +1585,7 @@ const getPoolsWithTeams = async (req, res) => {
                     {
                       model: User,
                       as: "User",
-                      attributes: ["id", "firstname", "lastname", "email"],
+                      attributes: ["id", "firstname", "lastname", "email", "gender"],
                     },
                   ],
                 },
@@ -1583,13 +1618,17 @@ const getPoolsWithTeams = async (req, res) => {
         id: pt.Team.id,
         teamName: pt.Team.teamName,
         players: pt.Team.TeamPlayers.map((tp) => tp.User),
-        stats: pt.Team.PoolTeamStat || {
-          wins: 0,
-          losses: 0,
-          pointsFor: 0,
-          pointsAgainst: 0,
-          pointDifference: 0,
-          pdPercent: 0,
+        stats: {
+          ...(pt.Team.PoolTeamStat?.toJSON?.() ||
+            pt.Team.PoolTeamStat || {
+              wins: 0,
+              losses: 0,
+              pointsFor: 0,
+              pointsAgainst: 0,
+              pointDifference: 0,
+              pdPercent: 0,
+            }),
+          standingsPoints: pt.Team.standingsPoints ?? 0,
         },
       })),
     }));
@@ -1647,7 +1686,7 @@ const getPoolDetails = async (req, res) => {
           include: [
             {
               model: Team,
-              attributes: ["id", "teamName"],
+              attributes: ["id", "teamName", "standingsPoints"],
               include: [
                 {
                   model: TeamPlayer,
@@ -1656,7 +1695,7 @@ const getPoolDetails = async (req, res) => {
                     {
                       model: User,
                       as: "User",
-                      attributes: ["id", "firstname", "lastname", "email"],
+                      attributes: ["id", "firstname", "lastname", "email", "gender"],
                     },
                   ],
                 },
@@ -1695,7 +1734,7 @@ const getPoolDetails = async (req, res) => {
                         {
                           model: User,
                           as: "User",
-                          attributes: ["id", "firstname", "lastname", "email"],
+                          attributes: ["id", "firstname", "lastname", "email", "gender"],
                         },
                       ],
                     },
@@ -1714,7 +1753,7 @@ const getPoolDetails = async (req, res) => {
                         {
                           model: User,
                           as: "User",
-                          attributes: ["id", "firstname", "lastname", "email"],
+                          attributes: ["id", "firstname", "lastname", "email", "gender"],
                         },
                       ],
                     },
@@ -1726,12 +1765,15 @@ const getPoolDetails = async (req, res) => {
         },
       ],
       order: [
+        [sequelize.col("PoolTeams.Team.standingsPoints"), "DESC"],
         [sequelize.col("PoolTeams.Team.PoolTeamStat.wins"), "DESC"],
         [sequelize.col("PoolTeams.Team.PoolTeamStat.pointDifference"), "DESC"],
         [sequelize.col("PoolTeams.Team.PoolTeamStat.pointsFor"), "DESC"],
 
-        // Sort Rounds by round number
+        // Sort Rounds by round number, games by gameType within series
         [sequelize.col("Rounds.roundNumber"), "ASC"],
+        [sequelize.col("Rounds.Matches.gameType"), "ASC"],
+        [sequelize.col("Rounds.Matches.id"), "ASC"],
       ],
     });
 
@@ -1750,14 +1792,17 @@ const getPoolDetails = async (req, res) => {
         id: pt.Team.id,
         teamName: pt.Team.teamName,
         players: pt.Team.TeamPlayers.map((tp) => tp.User),
-        stats: pt.Team.PoolTeamStat || {
-          // Default stats object
-          wins: 0,
-          losses: 0,
-          pointsFor: 0,
-          pointsAgainst: 0,
-          pointDifference: 0,
-          pdPercent: 0,
+        stats: {
+          ...(pt.Team.PoolTeamStat?.toJSON?.() ||
+            pt.Team.PoolTeamStat || {
+              wins: 0,
+              losses: 0,
+              pointsFor: 0,
+              pointsAgainst: 0,
+              pointDifference: 0,
+              pdPercent: 0,
+            }),
+          standingsPoints: pt.Team.standingsPoints ?? 0,
         },
       })),
       rounds: pool.Rounds.map((r) => ({
@@ -1769,6 +1814,8 @@ const getPoolDetails = async (req, res) => {
           status: m.status,
           scoreTeam1: m.scoreTeam1,
           scoreTeam2: m.scoreTeam2,
+          gameType: m.gameType ?? null,
+          courtAssignment: m.courtAssignment || null,
           team1: m.Team1,
           team2: m.Team2,
           winnerTeamId: m.winnerTeamId,
@@ -2154,6 +2201,9 @@ const resetMatchScore = async (req, res) => {
     await recomputeTeamStats(match.poolId, match.team1Id, t);
     await recomputeTeamStats(match.poolId, match.team2Id, t);
 
+    await recomputeTeamStandingsPoints(match.team1Id, { transaction: t });
+    await recomputeTeamStandingsPoints(match.team2Id, { transaction: t });
+
     //  Commit transaction
     await t.commit();
 
@@ -2183,6 +2233,75 @@ const resetMatchScore = async (req, res) => {
     await t.rollback();
     // console.error("resetMatchScore error:", error);
     res.status(500).json({ message: error.message });
+  }
+};
+
+/** Assign / clear court for a match; for series games, updates all sibling rows. */
+const updateCourtAssignment = async (req, res) => {
+  try {
+    const { matchId } = req.params;
+    const courtAssignment =
+      req.body?.courtAssignment === undefined || req.body?.courtAssignment === null
+        ? null
+        : String(req.body.courtAssignment).trim() || null;
+
+    const match = await Match.findByPk(matchId);
+    if (!match) {
+      return res.status(404).json({
+        error: true,
+        code: 404,
+        message: "Match not found",
+      });
+    }
+
+    let updatedCount = 0;
+    let matchIds = [match.id];
+
+    if (match.poolId && match.team1Id && match.team2Id && match.roundId) {
+      const [count] = await Match.update(
+        { courtAssignment },
+        {
+          where: {
+            poolId: match.poolId,
+            roundId: match.roundId,
+            team1Id: match.team1Id,
+            team2Id: match.team2Id,
+          },
+        }
+      );
+      updatedCount = count;
+      const siblings = await Match.findAll({
+        where: {
+          poolId: match.poolId,
+          roundId: match.roundId,
+          team1Id: match.team1Id,
+          team2Id: match.team2Id,
+        },
+        attributes: ["id"],
+      });
+      matchIds = siblings.map((m) => m.id);
+    } else {
+      match.courtAssignment = courtAssignment;
+      await match.save();
+      updatedCount = 1;
+    }
+
+    return res.status(200).json({
+      error: false,
+      code: 200,
+      message: "Court assignment updated",
+      data: {
+        courtAssignment,
+        matchIds,
+        updatedCount,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: true,
+      code: 500,
+      message: error.message || "Failed to update court assignment",
+    });
   }
 };
 
@@ -2659,6 +2778,10 @@ const updateMatchScore = async (req, res) => {
     const { bracketId, matchId } = req.params;
     const scoreTeam1 = parseInt(req.body.scoreTeam1, 10);
     const scoreTeam2 = parseInt(req.body.scoreTeam2, 10);
+    const isMlp =
+      req.body.mlp === true ||
+      req.body.mlp === "true" ||
+      String(req.body.format || "").toLowerCase() === "mlp";
 
     if (scoreTeam1 < 0 || scoreTeam2 < 0) {
       await t.rollback();
@@ -2702,7 +2825,49 @@ const updateMatchScore = async (req, res) => {
     let winnerTeamId = null;
     let loserTeamId = null;
 
-    if (scoring && scoring.name) {
+    const isSeriesGame = isSeriesGameType(match.gameType);
+
+    // Individual WD/MD/X1/X2/DB game row within an MLP series
+    if (isSeriesGame) {
+      if (scoreTeam1 === scoreTeam2) {
+        await t.rollback();
+        return res.status(400).json({
+          error: true,
+          code: 400,
+          message: "A game cannot end in a tie.",
+        });
+      }
+      completed = true;
+      winnerTeamId =
+        scoreTeam1 > scoreTeam2 ? match.team1Id : match.team2Id;
+      loserTeamId =
+        scoreTeam1 > scoreTeam2 ? match.team2Id : match.team1Id;
+    } else if (isMlp) {
+      const gamesToWin = 3;
+      if (scoreTeam1 > gamesToWin || scoreTeam2 > gamesToWin) {
+        await t.rollback();
+        return res.status(400).json({
+          error: true,
+          code: 400,
+          message: `Invalid MLP score: a team cannot win more than ${gamesToWin} games.`,
+        });
+      }
+      if (scoreTeam1 === gamesToWin || scoreTeam2 === gamesToWin) {
+        if (scoreTeam1 === scoreTeam2) {
+          await t.rollback();
+          return res.status(400).json({
+            error: true,
+            code: 400,
+            message: "Invalid MLP score: match cannot end in a tie.",
+          });
+        }
+        completed = true;
+        winnerTeamId =
+          scoreTeam1 > scoreTeam2 ? match.team1Id : match.team2Id;
+        loserTeamId =
+          scoreTeam1 > scoreTeam2 ? match.team2Id : match.team1Id;
+      }
+    } else if (scoring && scoring.name) {
       const scoringName = scoring.name.toLowerCase();
       const isBestOf = scoringName.includes("best of");
 
@@ -2757,9 +2922,6 @@ const updateMatchScore = async (req, res) => {
       }
     } else {
       await t.rollback(); // Stop the transaction
-      // console.error(
-      //   `Scoring rule not found for match ${matchId} in round ${round.id} (type: ${round.type}). 'scoringListId' was ${scoringListId}.`
-      // );
       return res.status(400).json({
         message: `Cannot update score: No scoring rule is set for this round (type: ${round.type}).`,
       });
@@ -2795,6 +2957,10 @@ const updateMatchScore = async (req, res) => {
     if (match.poolId) {
       await recomputeTeamStats(match.poolId, match.team1Id, t);
       await recomputeTeamStats(match.poolId, match.team2Id, t);
+
+      // Standings points: +3 per regulation game; DB 2/1
+      await recomputeTeamStandingsPoints(match.team1Id, { transaction: t });
+      await recomputeTeamStandingsPoints(match.team2Id, { transaction: t });
     } else if (completed) {
       // Call helper to update stats and rank
       await handlePlayoffMatch(match, round, t);
@@ -3186,6 +3352,7 @@ export default {
   getMatchDetails,
   updateMatchScore,
   resetMatchScore,
+  updateCourtAssignment,
   getPlayoffRounds,
   getOrCreatePlayoffs,
   resetPlayoffs,

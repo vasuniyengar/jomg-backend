@@ -41,6 +41,15 @@ const Match = sequelize.define(
       type: DataTypes.ENUM("pool", "playoff", "semifinal", "bronze", "gold"),
       defaultValue: "pool", // new field
     },
+    // 1=WD, 2=MD, 3=X1, 4=X2, 5=Dream Breaker
+    gameType: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    courtAssignment: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
     winnerTeamId: { type: DataTypes.INTEGER, allowNull: true },
     loserTeamId: { type: DataTypes.INTEGER, allowNull: true },
   },

@@ -25,5 +25,18 @@ router.delete(
   middlewares.authorizeRole(ORGANIZER_ROLES),
   roundRobinController.deleteRoundRobin
 );
+router.patch(
+  "/:tournamentId/brackets/:bracketId/publish",
+  middlewares.authenticate,
+  middlewares.authorizeRole(ORGANIZER_ROLES),
+  roundRobinController.publishRoundRobin
+);
+
+router.patch(
+  "/:tournamentId/brackets/:bracketId/unpublish",
+  middlewares.authenticate,
+  middlewares.authorizeRole(ORGANIZER_ROLES),
+  roundRobinController.unpublishRoundRobin
+);
 
 export default router;

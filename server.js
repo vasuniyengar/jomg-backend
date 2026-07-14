@@ -35,6 +35,7 @@ import eventRoutes from "./src/routes/eventRoutes.js";
 import playerRoutes from "./src/routes/playerRoutes.js";
 
 import hostRoutes from "./src/routes/hostRoutes.js";
+import standingsPointsRoutes from "./src/routes/standingsPointsRoutes.js";
 
 import verifyRoutes from "./src/routes/verifyRoutes.js";
 import playoffRoutes from "./src/routes/playoffRoutes.js";
@@ -158,6 +159,7 @@ app.use("/api/tournaments", playoffRoutes);
 app.use("/api/players", playerRegistrationRoutes);
 
 app.use("/api/host", hostRoutes);
+app.use("/api/host", standingsPointsRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
